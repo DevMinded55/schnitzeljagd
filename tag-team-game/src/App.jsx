@@ -18,6 +18,7 @@ const animals = [
   {
     id: "bear",
     name: "Bär",
+    emoji: "🐻",
     image: "/cards/baer.png",
     power: 5,
     hunts: ["wolf", "lynx"],
@@ -28,6 +29,7 @@ const animals = [
   {
     id: "wolf",
     name: "Wolf",
+    emoji: "🐺",
     image: "/cards/wolf.png",
     power: 4,
     hunts: ["lynx", "owl"],
@@ -38,6 +40,7 @@ const animals = [
   {
     id: "lynx",
     name: "Luchs",
+    emoji: "🐆",
     image: "/cards/luchs.png",
     power: 3,
     hunts: ["owl", "mouse"],
@@ -48,6 +51,7 @@ const animals = [
   {
     id: "owl",
     name: "Eule",
+    emoji: "🦉",
     image: "/cards/eule.png",
     power: 2,
     hunts: ["mouse"],
@@ -58,6 +62,7 @@ const animals = [
   {
     id: "mouse",
     name: "Maus",
+    emoji: "🐭",
     image: "/cards/maus.png",
     power: 1,
     hunts: [],
@@ -913,6 +918,35 @@ export default function SchnitzeljagdInspiredGame() {
                           ) : (
                             <span className="text-red-300">Ausgeschieden</span>
                           )}
+                        </div>
+                      )}
+
+                      {(playedCards[player.id] || []).length > 0 && (
+                        <div className="mt-3 border-t border-white/10 pt-3">
+                          <div className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+                            Gespielte Karten
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {(playedCards[player.id] || []).map((id) => {
+                              const animal = getAnimal(id);
+                              return (
+                                <span
+                                  key={id}
+                                  className="inline-flex items-center gap-2 rounded-full bg-zinc-800/80 px-4 py-2 text-sm font-medium text-zinc-200"
+                                >
+                                  {animal?.emoji && (
+                                    <span
+                                      aria-hidden="true"
+                                      className="text-xl leading-none"
+                                    >
+                                      {animal.emoji}
+                                    </span>
+                                  )}
+                                  {animal?.name ?? id}
+                                </span>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>
