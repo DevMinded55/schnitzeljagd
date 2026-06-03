@@ -151,9 +151,7 @@ function AnimalArt({ animal, className, fit = "cover" }) {
   const [broken, setBroken] = React.useState(false);
 
   return (
-    <div
-      className={`relative overflow-hidden ${className}`}
-    >
+    <div className={`relative overflow-hidden ${className}`}>
       {!broken ? (
         <img
           src={animal.image}
@@ -169,6 +167,62 @@ function AnimalArt({ animal, className, fit = "cover" }) {
         </div>
       )}
     </div>
+  );
+}
+
+const navBtnClass =
+  "rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-zinc-200 backdrop-blur transition hover:bg-white/15 hover:text-white";
+
+function MobileSideNav({ open, onClose, onShowRules, onLeave, showLeave }) {
+  if (!open) return null;
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Menü schließen"
+        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm md:hidden"
+        onClick={onClose}
+      />
+      <nav
+        aria-label="Navigation"
+        className="fixed right-0 top-0 z-50 flex h-full w-[min(280px,85vw)] flex-col gap-2 border-l border-white/10 bg-zinc-900/95 p-4 pt-5 shadow-2xl backdrop-blur md:hidden"
+      >
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-lg font-bold">Menü</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Schließen"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-lg font-bold text-zinc-300 transition hover:bg-white/20 hover:text-white"
+          >
+            ×
+          </button>
+        </div>
+        <button
+          type="button"
+          className={`${navBtnClass} w-full text-left`}
+          onClick={() => {
+            onShowRules();
+            onClose();
+          }}
+        >
+          Spielregeln
+        </button>
+        {showLeave && (
+          <button
+            type="button"
+            className={`${navBtnClass} w-full text-left`}
+            onClick={() => {
+              onLeave();
+              onClose();
+            }}
+          >
+            Verlassen
+          </button>
+        )}
+      </nav>
+    </>
   );
 }
 
@@ -303,6 +357,7 @@ export default function SchnitzeljagdInspiredGame() {
   const [notice, setNotice] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [showRules, setShowRules] = React.useState(false);
+  const [showMobileNav, setShowMobileNav] = React.useState(false);
 
   const unsubRef = React.useRef(null);
   const heartbeatRef = React.useRef(null);
@@ -770,30 +825,68 @@ export default function SchnitzeljagdInspiredGame() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white">
+      <div className="fixed inset-x-0 top-0 z-40 border-b border-white/5 bg-zinc-950/80 backdrop-blur md:hidden">
+        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 px-3 py-2.5">
+          <div className="justify-self-start">
+            {connected && gameStarted && isHost && (
+              <button type="button" onClick={resetGame} className={navBtnClass}>
+                Zurücksetzen
+              </button>
+            )}
+          </div>
+
+          <div className="min-w-0 text-center">
+            <h1 className="truncate bg-gradient-to-r from-amber-300 via-orange-400 to-emerald-300 bg-clip-text text-lg font-black tracking-tight text-transparent">
+              Schnitzeljagd
+            </h1>
+            {!gameStarted && (
+              <p className="mt-0.5 truncate text-[10px] text-zinc-400 sm:text-xs">
+                Online-Multiplayer • Bluffen & Jagen
+              </p>
+            )}
+          </div>
+
+          <div className="justify-self-end">
+            <button
+              type="button"
+              onClick={() => setShowMobileNav(true)}
+              aria-label="Menü öffnen"
+              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-zinc-200 transition hover:bg-white/15 hover:text-white"
+            >
+              <span className="flex flex-col gap-1">
+                <span className="block h-0.5 w-5 rounded-full bg-current" />
+                <span className="block h-0.5 w-5 rounded-full bg-current" />
+                <span className="block h-0.5 w-5 rounded-full bg-current" />
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <MobileSideNav
+        open={showMobileNav}
+        onClose={() => setShowMobileNav(false)}
+        onShowRules={() => setShowRules(true)}
+        onLeave={leaveRoom}
+        showLeave={connected && gameStarted}
+      />
+
       <button
         type="button"
         onClick={() => setShowRules(true)}
-        className="fixed left-4 top-4 z-40 rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-zinc-200 backdrop-blur transition hover:bg-white/15 hover:text-white"
+        className={`${navBtnClass} fixed left-4 top-4 z-40 hidden md:block`}
       >
         Spielregeln
       </button>
 
       {connected && gameStarted && (
-        <div className="fixed right-4 top-4 z-40 flex gap-2">
+        <div className="fixed right-4 top-4 z-40 hidden gap-2 md:flex">
           {isHost && (
-            <button
-              type="button"
-              onClick={resetGame}
-              className="rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-zinc-200 backdrop-blur transition hover:bg-white/15 hover:text-white"
-            >
+            <button type="button" onClick={resetGame} className={navBtnClass}>
               Zurücksetzen
             </button>
           )}
-          <button
-            type="button"
-            onClick={leaveRoom}
-            className="rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-zinc-200 backdrop-blur transition hover:bg-white/15 hover:text-white"
-          >
+          <button type="button" onClick={leaveRoom} className={navBtnClass}>
             Verlassen
           </button>
         </div>
@@ -802,13 +895,17 @@ export default function SchnitzeljagdInspiredGame() {
       {showRules && <RulesOverlay onClose={() => setShowRules(false)} />}
 
       <div
-        className={`mx-auto max-w-[1500px] px-4 sm:px-8 ${
-          connected && gameStarted ? "py-3 sm:py-4" : "py-6 sm:py-10"
+        className={`mx-auto max-w-[1500px] px-4 sm:px-8 md:pt-0 ${
+          connected && gameStarted
+            ? "pt-14 pb-3 sm:pb-4 md:py-3 md:sm:py-4"
+            : "pt-[4.5rem] pb-6 sm:pb-10 md:py-6 md:sm:py-10"
         }`}
       >
-        <header className={`${connected && gameStarted ? "mb-3" : "mb-8"} text-center`}>
+        <header
+          className={`${connected && gameStarted ? "mb-4 md:mb-4" : "mb-8 md:mb-8"} hidden text-center md:block`}
+        >
           <h1
-            className={`bg-gradient-to-r from-amber-300 via-orange-400 to-emerald-300 bg-clip-text font-black tracking-tight text-transparent drop-shadow-sm ${
+            className={`bg-gradient-to-r from-amber-300 via-orange-400 to-emerald-300 bg-clip-text pb-1.5 font-black leading-normal tracking-tight text-transparent drop-shadow-sm sm:pb-2 ${
               connected && gameStarted ? "text-3xl sm:text-5xl" : "text-4xl sm:text-6xl"
             }`}
           >
@@ -1072,13 +1169,13 @@ export default function SchnitzeljagdInspiredGame() {
                         className={`group flex w-full flex-col rounded-2xl bg-gradient-to-br ${animal.color} p-2 text-left shadow-lg transition ${
                           isPlayed
                             ? "cursor-not-allowed opacity-40 grayscale"
-                            : "hover:scale-[1.04] active:scale-95"
+                            : "hover:opacity-100 active:scale-[0.98]"
                         } ${
                           selected
-                            ? `ring-4 ${animal.ring} scale-[1.04]`
+                            ? `ring-4 ${animal.ring}`
                             : isPlayed
                               ? ""
-                              : "opacity-90 hover:opacity-100"
+                              : "opacity-90"
                         }`}
                       >
                         <AnimalArt
@@ -1086,20 +1183,24 @@ export default function SchnitzeljagdInspiredGame() {
                           fit="contain"
                           className="aspect-[5/7] w-full rounded-lg"
                         />
-                        <div className="mt-2 w-full rounded-lg bg-black/25 px-2.5 py-2">
-                          <AnimalCardInfo animal={animal} />
+                        <div className="mt-1.5 w-full rounded-lg bg-black/25 px-2 py-1.5">
+                          <AnimalCardInfo animal={animal} compact />
                         </div>
-                        {isPlayed ? (
-                          <div className="mt-2 rounded-full bg-black/40 px-2 py-1 text-center text-xs font-bold">
-                            Bereits gespielt
-                          </div>
-                        ) : (
-                          selected && (
-                            <div className="mt-2 rounded-full bg-white/20 px-2 py-1 text-center text-xs font-bold">
+                        <div className="mt-1.5 flex h-6 items-center">
+                          {isPlayed ? (
+                            <div className="w-full rounded-full bg-black/40 px-2 py-1 text-center text-xs font-bold">
+                              Bereits gespielt
+                            </div>
+                          ) : (
+                            <div
+                              className={`w-full rounded-full bg-white/20 px-2 py-1 text-center text-xs font-bold transition-opacity ${
+                                selected ? "opacity-100" : "opacity-0"
+                              }`}
+                            >
                               ✓ Abwählen
                             </div>
-                          )
-                        )}
+                          )}
+                        </div>
                       </button>
                     );
                   })}
@@ -1108,40 +1209,44 @@ export default function SchnitzeljagdInspiredGame() {
             )}
 
             {myPlayer && !myPlayer.alive && (
-              <div className="rounded-3xl border border-red-500/40 bg-red-950/40 p-6 text-center text-lg font-semibold text-red-200">
+              <div className="rounded-2xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-center text-sm font-semibold text-red-200">
                 Du wurdest gejagt – du schaust beim Rest der Jagd zu.
               </div>
             )}
 
             <div>
-              <h2 className="mb-2 text-xl font-bold">Spieler</h2>
-              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 xl:gap-4">
+              <h2 className="mb-1 text-base font-bold">Spieler</h2>
+              <div className="grid gap-1.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
                 {players.map((player) => {
                   const choice = getAnimal(selections[player.id]);
                   const hasChosen = !!selections[player.id];
                   const isMe = player.id === myPlayerId;
+                  const played = (playedCards[player.id] || [])
+                    .map(getAnimal)
+                    .filter(Boolean);
+
                   return (
                     <div
                       key={player.id}
-                      className={`min-w-0 rounded-3xl border p-3 shadow-xl transition xl:p-4 ${
+                      className={`min-w-0 rounded-xl border p-2 shadow-md transition ${
                         player.alive
                           ? "border-white/10 bg-white/5"
                           : "border-red-800/50 bg-red-950/30 opacity-70"
                       } ${isMe ? "ring-2 ring-emerald-400/50" : ""}`}
                     >
-                      <div className="mb-3 flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex items-center gap-2">
-                          <span className="truncate text-base font-bold xl:text-lg">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex min-w-0 items-center gap-1">
+                          <span className="truncate text-sm font-bold">
                             {player.name}
                           </span>
                           {isMe && (
-                            <span className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">
+                            <span className="shrink-0 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] text-emerald-300">
                               du
                             </span>
                           )}
                         </div>
                         <span
-                          className={`shrink-0 rounded-full px-2 py-1 text-xs font-bold xl:px-3 ${
+                          className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
                             player.alive
                               ? "bg-emerald-500/80"
                               : "bg-red-700/80"
@@ -1151,74 +1256,55 @@ export default function SchnitzeljagdInspiredGame() {
                         </span>
                       </div>
 
-                      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-400">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-tight text-zinc-400">
                         <span>
-                          Punkte:{" "}
-                          <span className="text-white">{player.score}</span>
+                          <span className="text-white">{player.score}</span>P ·{" "}
+                          <span className="text-white">{player.wins || 0}</span>S
                         </span>
-                        <span>
-                          Siege:{" "}
-                          <span className="text-white">{player.wins || 0}</span>
-                        </span>
+                        {revealed && choice ? (
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-md bg-gradient-to-br ${choice.color} px-1.5 py-0.5 text-[10px] font-bold text-white`}
+                          >
+                            {choice.emoji && (
+                              <span aria-hidden="true">{choice.emoji}</span>
+                            )}
+                            {choice.name}
+                          </span>
+                        ) : (
+                          <span
+                            className={
+                              player.alive
+                                ? hasChosen
+                                  ? "text-emerald-300"
+                                  : "text-zinc-400"
+                                : "text-red-300"
+                            }
+                          >
+                            {player.alive
+                              ? hasChosen
+                                ? "✓ Bereit"
+                                : "Wählt…"
+                              : "Ausgeschieden"}
+                          </span>
+                        )}
                       </div>
 
-                      {revealed && choice ? (
-                        <div
-                          className={`rounded-2xl bg-gradient-to-br ${choice.color} p-2 xl:p-3`}
-                        >
-                          <AnimalArt
-                            animal={choice}
-                            fit="contain"
-                            className="aspect-[5/7] w-full rounded-xl bg-black/20"
-                          />
-                          <div className="mt-2">
-                            <AnimalCardInfo animal={choice} compact />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="rounded-2xl bg-zinc-900/60 px-3 py-3 text-center text-sm">
-                          {player.alive ? (
-                            hasChosen ? (
-                              <span className="text-emerald-300">
-                                ✓ Bereit
-                              </span>
-                            ) : (
-                              <span className="text-zinc-400">
-                                Wählt ...
-                              </span>
-                            )
-                          ) : (
-                            <span className="text-red-300">Ausgeschieden</span>
-                          )}
-                        </div>
-                      )}
-
-                      {(playedCards[player.id] || []).length > 0 && (
-                        <div className="mt-3 border-t border-white/10 pt-3">
-                          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                            Gespielte Karten
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {(playedCards[player.id] || []).map((id) => {
-                              const animal = getAnimal(id);
-                              return (
-                                <span
-                                  key={id}
-                                  className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800/80 px-3 py-1.5 text-xs font-medium text-zinc-200"
-                                >
-                                  {animal?.emoji && (
-                                    <span
-                                      aria-hidden="true"
-                                      className="text-base leading-none"
-                                    >
-                                      {animal.emoji}
-                                    </span>
-                                  )}
-                                  {animal?.name ?? id}
+                      {played.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                          {played.map((animal) => (
+                            <span
+                              key={animal.id}
+                              title={`Gespielt: ${animal.name}`}
+                              className="inline-flex items-center gap-0.5 rounded-full bg-zinc-800/90 px-1.5 py-0.5 text-[10px] font-medium text-zinc-200"
+                            >
+                              {animal.emoji && (
+                                <span aria-hidden="true" className="text-xs leading-none">
+                                  {animal.emoji}
                                 </span>
-                              );
-                            })}
-                          </div>
+                              )}
+                              {animal.name}
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -1226,7 +1312,6 @@ export default function SchnitzeljagdInspiredGame() {
                 })}
               </div>
             </div>
-
           </div>
         )}
       </div>
