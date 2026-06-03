@@ -170,6 +170,101 @@ function AnimalArt({ animal, className }) {
   );
 }
 
+function RulesOverlay({ onClose }) {
+  const wolf = getAnimal("wolf");
+  const lynx = getAnimal("lynx");
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/10 bg-zinc-900 p-6 shadow-2xl sm:p-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Schließen"
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-lg font-bold text-zinc-300 transition hover:bg-white/20 hover:text-white"
+        >
+          ×
+        </button>
+
+        <h2 className="mb-5 pr-8 text-2xl font-black">Spielregeln</h2>
+
+        <div className="space-y-5 text-sm leading-relaxed text-zinc-300">
+          <section>
+            <h3 className="mb-1 font-bold text-white">Ziel</h3>
+            <p>
+              Sei der letzte Überlebende und sammle Punkte, indem du andere
+              Spieler mit deinem Tier jagst.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="mb-1 font-bold text-white">Ablauf pro Runde</h3>
+            <ol className="list-inside list-decimal space-y-1">
+              <li>Jeder wählt heimlich ein Tier aus seinen Karten.</li>
+              <li>
+                Du kannst deine Wahl jederzeit ändern oder abwählen, solange der
+                Gastgeber die Jagd noch nicht aufgedeckt hat.
+              </li>
+              <li>
+                Der Gastgeber deckt auf, wenn alle lebenden Spieler bereit sind.
+              </li>
+              <li>
+                Jagt dein Tier ein anderes Tier, scheidet der gejagte Spieler
+                aus – du bekommst einen Punkt.
+              </li>
+              <li>
+                In der nächsten Runde wählt ihr erneut. Bereits gespielte Karten
+                sind erst wieder verfügbar, wenn du alle fünf einmal gespielt
+                hast.
+              </li>
+            </ol>
+          </section>
+
+          <section>
+            <h3 className="mb-2 font-bold text-white">Beispiel</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {[wolf, lynx].map((animal) => (
+                <div
+                  key={animal.id}
+                  className={`rounded-2xl bg-gradient-to-br ${animal.color} p-2`}
+                >
+                  <AnimalArt
+                    animal={animal}
+                    className="h-20 w-full rounded-xl bg-black/20"
+                  />
+                  <div className="mt-2">
+                    <AnimalCardInfo animal={animal} compact />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 rounded-2xl bg-white/5 px-4 py-3 text-xs sm:text-sm">
+              Spieler A wählt den{" "}
+              <span className="font-semibold text-white">Wolf</span>, Spieler B
+              den <span className="font-semibold text-white">Luchs</span>. Der
+              Wolf jagt den Luchs → B scheidet aus, A bekommt 1 Punkt.
+            </p>
+          </section>
+
+          <section>
+            <h3 className="mb-1 font-bold text-white">Gastgeber</h3>
+            <p>
+              Der Gastgeber startet das Spiel, deckt die Jagd auf und startet
+              die nächste Runde.
+            </p>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SchnitzeljagdInspiredGame() {
   const [players, setPlayers] = React.useState([]);
   const [round, setRound] = React.useState(1);
@@ -188,6 +283,7 @@ export default function SchnitzeljagdInspiredGame() {
   const [isHost, setIsHost] = React.useState(false);
   const [notice, setNotice] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [showRules, setShowRules] = React.useState(false);
 
   const unsubRef = React.useRef(null);
   const heartbeatRef = React.useRef(null);
@@ -479,6 +575,14 @@ export default function SchnitzeljagdInspiredGame() {
   async function selectAnimal(animalId) {
     if (revealed || !roomId || !myPlayerId) return;
 
+    if (selections[myPlayerId] === animalId) {
+      setNotice("");
+      await updateDoc(doc(db, "rooms", roomId), {
+        [`selections.${myPlayerId}`]: deleteField(),
+      });
+      return;
+    }
+
     const myPlayed = playedCards[myPlayerId] || [];
     if (myPlayed.includes(animalId)) {
       setNotice("Diese Karte hast du in diesem Spiel schon gespielt.");
@@ -497,7 +601,12 @@ export default function SchnitzeljagdInspiredGame() {
   }
 
   async function revealRound() {
-    if (!roomId) return;
+    if (!roomId || !myPlayerId) return;
+
+    if (!isHost) {
+      setNotice("Nur der Gastgeber kann das.");
+      return;
+    }
 
     if (!everyoneSelected()) {
       setNotice("Alle lebenden Spieler müssen erst ein Tier wählen.");
@@ -509,7 +618,7 @@ export default function SchnitzeljagdInspiredGame() {
     await runTransaction(db, async (tx) => {
       const snap = await tx.get(roomRef);
       const data = snap.data();
-      if (!data || data.revealed) return;
+      if (!data || data.revealed || data.hostId !== myPlayerId) return;
 
       const sel = data.selections || {};
       const aliveNotSelected = (data.players || []).filter(
@@ -542,6 +651,10 @@ export default function SchnitzeljagdInspiredGame() {
 
   async function nextRound() {
     if (!roomId) return;
+    if (!isHost) {
+      setNotice("Nur der Gastgeber kann das.");
+      return;
+    }
     setNotice("");
     await updateDoc(doc(db, "rooms", roomId), {
       selections: {},
@@ -553,6 +666,10 @@ export default function SchnitzeljagdInspiredGame() {
 
   async function resetGame() {
     if (!roomId) return;
+    if (!isHost) {
+      setNotice("Nur der Gastgeber kann das.");
+      return;
+    }
     setNotice("");
     const resetPlayers = players.map((p) => ({
       ...p,
@@ -584,6 +701,16 @@ export default function SchnitzeljagdInspiredGame() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white">
+      <button
+        type="button"
+        onClick={() => setShowRules(true)}
+        className="fixed left-4 top-4 z-40 rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-zinc-200 backdrop-blur transition hover:bg-white/15 hover:text-white"
+      >
+        Spielregeln
+      </button>
+
+      {showRules && <RulesOverlay onClose={() => setShowRules(false)} />}
+
       <div
         className={`mx-auto max-w-[1500px] px-4 sm:px-8 ${
           connected && gameStarted ? "py-4 sm:py-5" : "py-6 sm:py-10"
@@ -733,7 +860,7 @@ export default function SchnitzeljagdInspiredGame() {
         {connected && gameStarted && (
           <div className="space-y-4">
             <div className="flex flex-wrap justify-end gap-2">
-              {revealed && !winner && (
+              {isHost && revealed && !winner && (
                 <button
                   onClick={nextRound}
                   className="rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-sm font-bold shadow-lg shadow-blue-900/40 transition hover:scale-[1.03] active:scale-95"
@@ -742,12 +869,14 @@ export default function SchnitzeljagdInspiredGame() {
                 </button>
               )}
 
-              <button
-                onClick={resetGame}
-                className="rounded-2xl bg-zinc-800/70 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/70"
-              >
-                Zurücksetzen
-              </button>
+              {isHost && (
+                <button
+                  onClick={resetGame}
+                  className="rounded-2xl bg-zinc-800/70 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/70"
+                >
+                  Zurücksetzen
+                </button>
+              )}
 
               <button
                 onClick={leaveRoom}
@@ -778,18 +907,29 @@ export default function SchnitzeljagdInspiredGame() {
               <div className="rounded-3xl border border-white/10 bg-white/5 p-4 shadow-2xl backdrop-blur sm:p-5">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="text-xl font-bold">Deine geheime Wahl</h2>
+                    <div>
+                      <h2 className="text-xl font-bold">Deine geheime Wahl</h2>
+                      <p className="mt-0.5 text-xs text-zinc-400">
+                        Tippe eine Karte erneut an, um sie abzuwählen.
+                      </p>
+                    </div>
                     <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-300">
                       Runde {round}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <button
-                      onClick={revealRound}
-                      className="rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-5 py-3 font-bold shadow-lg shadow-rose-900/40 transition hover:scale-[1.03] active:scale-95"
-                    >
-                      Jagd aufdecken
-                    </button>
+                    {isHost ? (
+                      <button
+                        onClick={revealRound}
+                        className="rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-5 py-3 font-bold shadow-lg shadow-rose-900/40 transition hover:scale-[1.03] active:scale-95"
+                      >
+                        Jagd aufdecken
+                      </button>
+                    ) : (
+                      <span className="text-sm text-zinc-400">
+                        Warte, bis der Gastgeber die Jagd aufdeckt …
+                      </span>
+                    )}
                     <span className="rounded-full bg-zinc-900/70 px-3 py-1 text-xs font-semibold text-zinc-300">
                       Noch {animals.length - (playedCards[myPlayerId] || []).length}{" "}
                       Karten
@@ -834,7 +974,7 @@ export default function SchnitzeljagdInspiredGame() {
                         ) : (
                           selected && (
                             <div className="mt-2 rounded-full bg-white/20 px-2 py-1 text-center text-xs font-bold">
-                              ✓ Gewählt
+                              ✓ Abwählen
                             </div>
                           )
                         )}
