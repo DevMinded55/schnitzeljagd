@@ -948,7 +948,7 @@ export default function SchnitzeljagdInspiredGame() {
         )}
 
         {connected && gameStarted && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {isHost && (revealed || winner) && (
               <div className="flex flex-wrap justify-end gap-2">
                 {revealed && !winner && (
@@ -1025,8 +1025,8 @@ export default function SchnitzeljagdInspiredGame() {
             )}
 
             {myPlayer && myPlayer.alive && !revealed && !winner && (
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-4 shadow-2xl backdrop-blur sm:p-5">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-3 shadow-2xl backdrop-blur sm:p-4">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-3">
                     <div>
                       <h2 className="text-xl font-bold">Deine geheime Wahl</h2>
@@ -1057,7 +1057,7 @@ export default function SchnitzeljagdInspiredGame() {
                     </span>
                   </div>
                 </div>
-                <div className="mx-auto grid w-full max-w-[1000px] grid-cols-2 gap-3 md:grid-cols-5 xl:gap-4">
+                <div className="mx-auto grid w-full max-w-[1180px] grid-cols-2 gap-3 md:grid-cols-5 xl:gap-4">
                   {animals.map((animal) => {
                     const selected = mySelection === animal.id;
                     const isPlayed = (playedCards[myPlayerId] || []).includes(
@@ -1114,7 +1114,7 @@ export default function SchnitzeljagdInspiredGame() {
             )}
 
             <div>
-              <h2 className="mb-3 text-xl font-bold">Spieler</h2>
+              <h2 className="mb-2 text-xl font-bold">Spieler</h2>
               <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 xl:gap-4">
                 {players.map((player) => {
                   const choice = getAnimal(selections[player.id]);
