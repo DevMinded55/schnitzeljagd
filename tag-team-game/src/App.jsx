@@ -253,10 +253,25 @@ function RulesOverlay({ onClose }) {
           </section>
 
           <section>
+            <h3 className="mb-1 font-bold text-white">Spiel & Session</h3>
+            <p>
+              Ein <span className="font-semibold text-white">Spiel</span> endet,
+              wenn nur noch ein Spieler lebt. Der Gastgeber kann danach{" "}
+              <span className="font-semibold text-white">Nächstes Spiel</span>{" "}
+              starten – alle leben wieder, die{" "}
+              <span className="font-semibold text-white">Siege</span> in der
+              Rangliste bleiben. So viele Spiele wie ihr wollt, bis{" "}
+              <span className="font-semibold text-white">Zurücksetzen</span> oder
+              alle den Raum verlassen.
+            </p>
+          </section>
+
+          <section>
             <h3 className="mb-1 font-bold text-white">Gastgeber</h3>
             <p>
-              Der Gastgeber startet das Spiel, deckt die Jagd auf und startet
-              die nächste Runde.
+              Der Gastgeber startet das Spiel, deckt die Jagd auf, startet die
+              nächste Runde innerhalb eines Spiels und nach einem Gewinner das
+              nächste Spiel.
             </p>
           </section>
         </div>
@@ -268,6 +283,7 @@ function RulesOverlay({ onClose }) {
 export default function SchnitzeljagdInspiredGame() {
   const [players, setPlayers] = React.useState([]);
   const [round, setRound] = React.useState(1);
+  const [match, setMatch] = React.useState(0);
   const [revealed, setRevealed] = React.useState(false);
   const [gameStarted, setGameStarted] = React.useState(false);
   const [selections, setSelections] = React.useState({});
@@ -403,6 +419,7 @@ export default function SchnitzeljagdInspiredGame() {
 
       setPlayers(data.players || []);
       setRound(data.round || 1);
+      setMatch(data.match || 0);
       setRevealed(!!data.revealed);
       setGameStarted(!!data.started);
       setSelections(data.selections || {});
@@ -429,13 +446,14 @@ export default function SchnitzeljagdInspiredGame() {
 
       await setDoc(doc(db, "rooms", newRoomId), {
         players: [
-          { id: myId, name: playerName.trim(), alive: true, score: 0 },
+          { id: myId, name: playerName.trim(), alive: true, score: 0, wins: 0 },
         ],
         selections: {},
         playedCards: { [myId]: [] },
         presence: { [myId]: Date.now() },
         revealed: false,
         round: 1,
+        match: 0,
         started: false,
         hostId: myId,
         winner: null,
@@ -479,11 +497,17 @@ export default function SchnitzeljagdInspiredGame() {
       }
 
       const data = roomSnap.data();
+
+      if (data.started) {
+        setNotice("In diesem Raum wurde bereits ein Spiel gestartet.");
+        return;
+      }
+
       const myId = crypto.randomUUID();
 
       const updatedPlayers = [
         ...(data.players || []),
-        { id: myId, name: playerName.trim(), alive: true, score: 0 },
+        { id: myId, name: playerName.trim(), alive: true, score: 0, wins: 0 },
       ];
 
       await updateDoc(roomRef, {
@@ -528,6 +552,7 @@ export default function SchnitzeljagdInspiredGame() {
     setGameStarted(false);
     setRevealed(false);
     setRound(1);
+    setMatch(0);
     setNotice("");
 
     if (!code || !myId) return;
@@ -568,6 +593,8 @@ export default function SchnitzeljagdInspiredGame() {
     setNotice("");
     await updateDoc(doc(db, "rooms", roomId), {
       started: true,
+      match: 1,
+      round: 1,
       message: "Wählt euer Tier – geheim!",
     });
   }
@@ -628,6 +655,15 @@ export default function SchnitzeljagdInspiredGame() {
 
       const result = computeReveal(data.players, sel);
 
+      let playersToWrite = result.updatedPlayers;
+      if (result.winnerId) {
+        playersToWrite = result.updatedPlayers.map((p) =>
+          p.id === result.winnerId
+            ? { ...p, wins: (p.wins || 0) + 1 }
+            : p,
+        );
+      }
+
       const played = { ...(data.playedCards || {}) };
       (data.players || []).forEach((p) => {
         const choice = sel[p.id];
@@ -640,7 +676,7 @@ export default function SchnitzeljagdInspiredGame() {
       });
 
       tx.update(roomRef, {
-        players: result.updatedPlayers,
+        players: playersToWrite,
         revealed: true,
         winner: result.winnerId,
         message: result.message,
@@ -675,6 +711,7 @@ export default function SchnitzeljagdInspiredGame() {
       ...p,
       alive: true,
       score: 0,
+      wins: 0,
     }));
     await updateDoc(doc(db, "rooms", roomId), {
       players: resetPlayers,
@@ -682,9 +719,34 @@ export default function SchnitzeljagdInspiredGame() {
       playedCards: {},
       revealed: false,
       round: 1,
+      match: 0,
       started: false,
       winner: null,
       message: "Neue Runde – wartet in der Lobby.",
+    });
+  }
+
+  async function startNextGame() {
+    if (!roomId) return;
+    if (!isHost) {
+      setNotice("Nur der Gastgeber kann das.");
+      return;
+    }
+    setNotice("");
+    const nextPlayers = players.map((p) => ({
+      ...p,
+      alive: true,
+      score: 0,
+    }));
+    await updateDoc(doc(db, "rooms", roomId), {
+      players: nextPlayers,
+      selections: {},
+      playedCards: {},
+      revealed: false,
+      winner: null,
+      round: 1,
+      match: (match || 1) + 1,
+      message: "Neues Spiel – wählt euer Tier.",
     });
   }
 
@@ -698,6 +760,10 @@ export default function SchnitzeljagdInspiredGame() {
   const myPlayer = players.find((p) => p.id === myPlayerId);
   const mySelection = selections[myPlayerId];
   const winner = winnerId ? players.find((p) => p.id === winnerId) : null;
+  const winsRanking = [...players].sort(
+    (a, b) =>
+      (b.wins || 0) - (a.wins || 0) || a.name.localeCompare(b.name, "de"),
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white">
@@ -869,6 +935,15 @@ export default function SchnitzeljagdInspiredGame() {
                 </button>
               )}
 
+              {isHost && winner && (
+                <button
+                  onClick={startNextGame}
+                  className="rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-sm font-bold shadow-lg shadow-blue-900/40 transition hover:scale-[1.03] active:scale-95"
+                >
+                  Nächstes Spiel
+                </button>
+              )}
+
               {isHost && (
                 <button
                   onClick={resetGame}
@@ -894,12 +969,48 @@ export default function SchnitzeljagdInspiredGame() {
 
             {winner && (
               <div className="rounded-3xl border border-emerald-400/40 bg-emerald-500/15 p-8 text-center shadow-2xl">
+                {match > 0 && (
+                  <div className="text-sm font-semibold uppercase tracking-widest text-emerald-200/80">
+                    Spiel {match}
+                  </div>
+                )}
                 <div className="mt-2 text-3xl font-black">
-                  {winner.name} gewinnt!
+                  {winner.name} gewinnt dieses Spiel!
                 </div>
                 <div className="mt-1 text-zinc-300">
-                  Endpunktzahl: {winner.score}
+                  Jagd-Punkte in diesem Spiel: {winner.score} · Siege gesamt:{" "}
+                  {winner.wins || 0}
                 </div>
+                <div className="mx-auto mt-6 max-w-md rounded-2xl bg-black/20 px-4 py-3 text-left">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                    Siege in dieser Session
+                  </div>
+                  <ul className="space-y-1">
+                    {winsRanking.map((p) => (
+                      <li
+                        key={p.id}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span className="font-medium">{p.name}</span>
+                        <span className="font-bold text-emerald-200">
+                          {p.wins || 0}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                {isHost ? (
+                  <button
+                    onClick={startNextGame}
+                    className="mt-6 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-8 py-3 text-lg font-bold shadow-lg shadow-blue-900/40 transition hover:scale-[1.03] active:scale-95"
+                  >
+                    Nächstes Spiel
+                  </button>
+                ) : (
+                  <p className="mt-6 text-sm text-zinc-300">
+                    Warte auf den Gastgeber für das nächste Spiel …
+                  </p>
+                )}
               </div>
             )}
 
@@ -914,7 +1025,7 @@ export default function SchnitzeljagdInspiredGame() {
                       </p>
                     </div>
                     <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-300">
-                      Runde {round}
+                      {match > 0 ? `Spiel ${match} · ` : ""}Runde {round}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
@@ -1029,8 +1140,15 @@ export default function SchnitzeljagdInspiredGame() {
                         </span>
                       </div>
 
-                      <div className="mb-3 text-sm text-zinc-400">
-                        Punkte: <span className="text-white">{player.score}</span>
+                      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-400">
+                        <span>
+                          Punkte:{" "}
+                          <span className="text-white">{player.score}</span>
+                        </span>
+                        <span>
+                          Siege:{" "}
+                          <span className="text-white">{player.wins || 0}</span>
+                        </span>
                       </div>
 
                       {revealed && choice ? (
