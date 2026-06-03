@@ -117,9 +117,9 @@ function computeReveal(players, selections) {
       if (!targetAnimal) return;
 
       if (hunterAnimal.hunts.includes(targetAnimal.id)) {
+        hunter.score += 1;
         if (!eliminated.includes(target.id)) {
           eliminated.push(target.id);
-          hunter.score += 1;
         }
       }
     });
