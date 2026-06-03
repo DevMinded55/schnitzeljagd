@@ -579,7 +579,7 @@ export default function SchnitzeljagdInspiredGame() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white">
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-8 sm:py-10">
         <header className="mb-8 text-center">
           <h1 className="bg-gradient-to-r from-amber-300 via-orange-400 to-emerald-300 bg-clip-text text-4xl font-black tracking-tight text-transparent drop-shadow-sm sm:text-6xl">
             Schnitzeljagd
@@ -791,7 +791,7 @@ export default function SchnitzeljagdInspiredGame() {
                     ? "Wahl gespeichert. Du kannst sie bis zur Aufdeckung ändern."
                     : "Wähle dein Tier – jede Karte ist pro Spiel nur einmal spielbar."}
                 </p>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-5 xl:gap-5">
                   {animals.map((animal) => {
                     const selected = mySelection === animal.id;
                     const isPlayed = (playedCards[myPlayerId] || []).includes(
@@ -803,7 +803,7 @@ export default function SchnitzeljagdInspiredGame() {
                         onClick={() => selectAnimal(animal.id)}
                         disabled={isPlayed}
                         aria-disabled={isPlayed}
-                        className={`group rounded-3xl bg-gradient-to-br ${animal.color} p-3 text-left shadow-lg transition ${
+                        className={`group min-w-0 rounded-3xl bg-gradient-to-br ${animal.color} p-2 text-left shadow-lg transition sm:p-3 ${
                           isPlayed
                             ? "cursor-not-allowed opacity-40 grayscale"
                             : "hover:scale-[1.04] active:scale-95"
