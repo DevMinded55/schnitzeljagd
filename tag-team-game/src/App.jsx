@@ -1,14 +1,29 @@
 import React from "react";
+import {
+  doc,
+  setDoc,
+  updateDoc,
+  onSnapshot,
+  getDoc,
+  runTransaction,
+  deleteDoc,
+  deleteField,
+} from "firebase/firestore";
+import { db } from "./firebase";
+
+const HEARTBEAT_MS = 5000;
+const STALE_MS = 15000;
 
 const animals = [
   {
     id: "bear",
-    name: "Bear",
+    name: "Bär",
     image: "/cards/baer.png",
     power: 5,
     hunts: ["wolf", "lynx"],
-    color: "bg-amber-700",
-    description: "Strong and fearless hunter",
+    color: "from-amber-600 to-amber-800",
+    ring: "ring-amber-300",
+    description: "Stark und furchtlos auf der Jagd",
   },
   {
     id: "wolf",
@@ -16,35 +31,39 @@ const animals = [
     image: "/cards/wolf.png",
     power: 4,
     hunts: ["lynx", "owl"],
-    color: "bg-zinc-600",
-    description: "Fast pack predator",
+    color: "from-zinc-500 to-zinc-700",
+    ring: "ring-zinc-200",
+    description: "Schneller Rudeljäger",
   },
   {
     id: "lynx",
-    name: "Lynx",
+    name: "Luchs",
     image: "/cards/luchs.png",
     power: 3,
     hunts: ["owl", "mouse"],
-    color: "bg-orange-600",
-    description: "Silent forest stalker",
+    color: "from-orange-500 to-orange-700",
+    ring: "ring-orange-200",
+    description: "Leiser Waldbewohner",
   },
   {
     id: "owl",
-    name: "Owl",
+    name: "Eule",
     image: "/cards/eule.png",
     power: 2,
     hunts: ["mouse"],
-    color: "bg-purple-700",
-    description: "Night hunter",
+    color: "from-purple-600 to-purple-800",
+    ring: "ring-purple-200",
+    description: "Jäger der Nacht",
   },
   {
     id: "mouse",
-    name: "Mouse",
+    name: "Maus",
     image: "/cards/maus.png",
     power: 1,
     hunts: [],
-    color: "bg-emerald-600",
-    description: "Tiny survivor",
+    color: "from-emerald-500 to-emerald-700",
+    ring: "ring-emerald-200",
+    description: "Kleiner Überlebenskünstler",
   },
 ];
 
@@ -52,342 +71,857 @@ function getAnimal(id) {
   return animals.find((a) => a.id === id);
 }
 
+function formatHunts(animal) {
+  if (!animal.hunts.length) return "Niemanden";
+  return animal.hunts.map((h) => getAnimal(h)?.name ?? h).join(", ");
+}
+
+function AnimalCardInfo({ animal, compact = false }) {
+  return (
+    <div className={compact ? "min-w-0 flex-1" : ""}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-bold">{animal.name}</span>
+        <span className="shrink-0 rounded-full bg-black/30 px-2 py-0.5 text-xs">
+          Stärke {animal.power}
+        </span>
+      </div>
+      {!compact && (
+        <p className="mt-1 text-xs opacity-90">{animal.description}</p>
+      )}
+      <p className={`text-xs opacity-90 ${compact ? "mt-0.5" : "mt-1"}`}>
+        <span className="font-semibold">Jagt:</span> {formatHunts(animal)}
+      </p>
+    </div>
+  );
+}
+
+function computeReveal(players, selections) {
+  const updatedPlayers = players.map((p) => ({ ...p }));
+  const eliminated = [];
+
+  updatedPlayers.forEach((hunter) => {
+    if (!hunter.alive) return;
+
+    const hunterAnimal = getAnimal(selections[hunter.id]);
+    if (!hunterAnimal) return;
+
+    updatedPlayers.forEach((target) => {
+      if (hunter.id === target.id || !target.alive) return;
+
+      const targetAnimal = getAnimal(selections[target.id]);
+      if (!targetAnimal) return;
+
+      if (hunterAnimal.hunts.includes(targetAnimal.id)) {
+        if (!eliminated.includes(target.id)) {
+          eliminated.push(target.id);
+          hunter.score += 1;
+        }
+      }
+    });
+  });
+
+  updatedPlayers.forEach((player) => {
+    if (eliminated.includes(player.id)) player.alive = false;
+  });
+
+  const survivors = updatedPlayers.filter((p) => p.alive);
+  let winnerId = null;
+  let message;
+
+  if (survivors.length <= 1) {
+    const w = survivors[0] || updatedPlayers[0];
+    winnerId = w ? w.id : null;
+    message = `${w?.name || "Niemand"} gewinnt die Jagd!`;
+  } else {
+    message =
+      eliminated.length > 0
+        ? `${eliminated.length} Spieler wurden in dieser Runde gejagt.`
+        : "In dieser Runde wurde niemand gejagt.";
+  }
+
+  return { updatedPlayers, eliminated, winnerId, message };
+}
+
+function AnimalArt({ animal, className }) {
+  const [broken, setBroken] = React.useState(false);
+
+  return (
+    <div
+      className={`relative overflow-hidden ${className}`}
+    >
+      {!broken ? (
+        <img
+          src={animal.image}
+          alt={animal.name}
+          onError={() => setBroken(true)}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-black/30 text-sm font-semibold text-white/80">
+          {animal.name}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SchnitzeljagdInspiredGame() {
-  const [playerCount, setPlayerCount] = React.useState(3);
-  const [gameStarted, setGameStarted] = React.useState(false);
   const [players, setPlayers] = React.useState([]);
   const [round, setRound] = React.useState(1);
   const [revealed, setRevealed] = React.useState(false);
+  const [gameStarted, setGameStarted] = React.useState(false);
+  const [selections, setSelections] = React.useState({});
+  const [playedCards, setPlayedCards] = React.useState({});
+  const [winnerId, setWinnerId] = React.useState(null);
   const [message, setMessage] = React.useState("");
-  const [winner, setWinner] = React.useState(null);
+  const [hostId, setHostId] = React.useState(null);
 
-  function startGame() {
-    const initialPlayers = Array.from({ length: playerCount }).map(
-      (_, index) => ({
-        id: index + 1,
-        name: `Player ${index + 1}`,
-        selected: null,
-        alive: true,
-        score: 0,
-      }),
+  const [roomId, setRoomId] = React.useState("");
+  const [playerName, setPlayerName] = React.useState("");
+  const [myPlayerId, setMyPlayerId] = React.useState(null);
+  const [connected, setConnected] = React.useState(false);
+  const [isHost, setIsHost] = React.useState(false);
+  const [notice, setNotice] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  const unsubRef = React.useRef(null);
+  const heartbeatRef = React.useRef(null);
+  const stateRef = React.useRef({});
+
+  React.useEffect(() => {
+    stateRef.current = { roomId, myPlayerId, players, hostId };
+  });
+
+  function stopHeartbeat() {
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+  }
+
+  function startHeartbeat(roomCode, myId) {
+    stopHeartbeat();
+    heartbeatRef.current = setInterval(() => {
+      updateDoc(doc(db, "rooms", roomCode), {
+        [`presence.${myId}`]: Date.now(),
+      }).catch(() => {});
+    }, HEARTBEAT_MS);
+  }
+
+  function removeSelfBeacon() {
+    const { roomId: code, myPlayerId: myId, players: ps, hostId: host } =
+      stateRef.current;
+    if (!code || !myId) return;
+    const remaining = (ps || []).filter((p) => p.id !== myId);
+    const roomRef = doc(db, "rooms", code);
+    if (remaining.length === 0) {
+      deleteDoc(roomRef).catch(() => {});
+      return;
+    }
+    const updates = {
+      players: remaining,
+      [`presence.${myId}`]: deleteField(),
+      [`selections.${myId}`]: deleteField(),
+      [`playedCards.${myId}`]: deleteField(),
+    };
+    if (host === myId) updates.hostId = remaining[0].id;
+    updateDoc(roomRef, updates).catch(() => {});
+  }
+
+  React.useEffect(() => {
+    const onPageHide = () => removeSelfBeacon();
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      if (unsubRef.current) unsubRef.current();
+      stopHeartbeat();
+    };
+  }, []);
+
+  async function maybeReap(roomCode, myId, data) {
+    const playersArr = data.players || [];
+    if (playersArr.length === 0) return;
+
+    const presence = data.presence || {};
+    const now = Date.now();
+
+    const sortedIds = playersArr.map((p) => p.id).sort();
+    if (sortedIds[0] !== myId) return;
+
+    const hasStale = playersArr.some(
+      (p) => now - (presence[p.id] ?? 0) > STALE_MS,
     );
+    if (!hasStale) return;
 
-    setPlayers(initialPlayers);
-    setGameStarted(true);
-    setRound(1);
-    setWinner(null);
-    setMessage("Choose your animals secretly.");
+    const roomRef = doc(db, "rooms", roomCode);
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(roomRef);
+        if (!snap.exists()) return;
+
+        const d = snap.data();
+        const cur = d.players || [];
+        const curPresence = d.presence || {};
+        const tnow = Date.now();
+
+        const remaining = cur.filter(
+          (p) => tnow - (curPresence[p.id] ?? 0) <= STALE_MS,
+        );
+        const removed = cur.filter(
+          (p) => !remaining.some((r) => r.id === p.id),
+        );
+        if (removed.length === 0) return;
+
+        if (remaining.length === 0) {
+          tx.delete(roomRef);
+          return;
+        }
+
+        const updates = { players: remaining };
+        removed.forEach((p) => {
+          updates[`presence.${p.id}`] = deleteField();
+          updates[`selections.${p.id}`] = deleteField();
+          updates[`playedCards.${p.id}`] = deleteField();
+        });
+        if (removed.some((p) => p.id === d.hostId)) {
+          updates.hostId = remaining[0].id;
+        }
+        tx.update(roomRef, updates);
+      });
+    } catch {
+      // ignore transient transaction failures; next snapshot retries
+    }
   }
 
-  function selectAnimal(playerId, animalId) {
-    if (revealed) return;
+  function subscribe(id, myId) {
+    if (unsubRef.current) unsubRef.current();
 
-    setPlayers((prev) =>
-      prev.map((player) =>
-        player.id === playerId ? { ...player, selected: animalId } : player,
-      ),
-    );
+    unsubRef.current = onSnapshot(doc(db, "rooms", id), (snapshot) => {
+      const data = snapshot.data();
+      if (!data) return;
+
+      setPlayers(data.players || []);
+      setRound(data.round || 1);
+      setRevealed(!!data.revealed);
+      setGameStarted(!!data.started);
+      setSelections(data.selections || {});
+      setPlayedCards(data.playedCards || {});
+      setWinnerId(data.winner || null);
+      setMessage(data.message || "");
+      setHostId(data.hostId || null);
+      setIsHost(data.hostId === myId);
+
+      maybeReap(id, myId, data);
+    });
   }
 
-  function everyoneSelected() {
-    return players.filter((p) => p.alive).every((p) => p.selected !== null);
-  }
-
-  function revealRound() {
-    if (!everyoneSelected()) {
-      setMessage("All alive players must choose an animal.");
+  async function createRoom() {
+    if (!playerName.trim()) {
+      setNotice("Bitte gib zuerst deinen Namen ein.");
       return;
     }
 
-    const updatedPlayers = [...players];
-    const eliminated = [];
+    setBusy(true);
+    try {
+      const newRoomId = Math.random().toString(36).substring(2, 7);
+      const myId = crypto.randomUUID();
 
-    updatedPlayers.forEach((hunter) => {
-      if (!hunter.alive) return;
-
-      const hunterAnimal = getAnimal(hunter.selected);
-
-      updatedPlayers.forEach((target) => {
-        if (hunter.id === target.id || !target.alive) return;
-
-        const targetAnimal = getAnimal(target.selected);
-
-        if (hunterAnimal.hunts.includes(targetAnimal.id)) {
-          if (!eliminated.includes(target.id)) {
-            eliminated.push(target.id);
-            hunter.score += 1;
-          }
-        }
+      await setDoc(doc(db, "rooms", newRoomId), {
+        players: [
+          { id: myId, name: playerName.trim(), alive: true, score: 0 },
+        ],
+        selections: {},
+        playedCards: { [myId]: [] },
+        presence: { [myId]: Date.now() },
+        revealed: false,
+        round: 1,
+        started: false,
+        hostId: myId,
+        winner: null,
+        message: "Warte auf Mitspieler ...",
       });
-    });
 
-    updatedPlayers.forEach((player) => {
-      if (eliminated.includes(player.id)) {
-        player.alive = false;
-      }
-    });
+      setMyPlayerId(myId);
+      setRoomId(newRoomId);
+      setIsHost(true);
+      setConnected(true);
+      setNotice("");
+      subscribe(newRoomId, myId);
+      startHeartbeat(newRoomId, myId);
+    } catch (err) {
+      setNotice("Raum konnte nicht erstellt werden. " + err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
-    const survivors = updatedPlayers.filter((p) => p.alive);
-
-    if (survivors.length <= 1) {
-      setWinner(survivors[0] || updatedPlayers[0]);
-      setMessage(`${survivors[0]?.name || "Nobody"} wins the hunt!`);
-    } else {
-      setMessage(
-        eliminated.length > 0
-          ? `${eliminated.length} player(s) were hunted this round.`
-          : "Nobody was hunted this round.",
-      );
+  async function joinRoom() {
+    if (!playerName.trim()) {
+      setNotice("Bitte gib zuerst deinen Namen ein.");
+      return;
     }
 
-    setPlayers(updatedPlayers);
-    setRevealed(true);
+    const code = roomId.trim().toLowerCase();
+    if (!code) {
+      setNotice("Bitte gib einen Raumcode ein.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const roomRef = doc(db, "rooms", code);
+      const roomSnap = await getDoc(roomRef);
+
+      if (!roomSnap.exists()) {
+        setNotice("Raum nicht gefunden.");
+        return;
+      }
+
+      const data = roomSnap.data();
+      const myId = crypto.randomUUID();
+
+      const updatedPlayers = [
+        ...(data.players || []),
+        { id: myId, name: playerName.trim(), alive: true, score: 0 },
+      ];
+
+      await updateDoc(roomRef, {
+        players: updatedPlayers,
+        [`playedCards.${myId}`]: [],
+        [`presence.${myId}`]: Date.now(),
+      });
+
+      setMyPlayerId(myId);
+      setRoomId(code);
+      setIsHost(data.hostId === myId);
+      setConnected(true);
+      setNotice("");
+      subscribe(code, myId);
+      startHeartbeat(code, myId);
+    } catch (err) {
+      setNotice("Beitritt fehlgeschlagen. " + err.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function nextRound() {
-    setPlayers((prev) =>
-      prev.map((player) => ({
-        ...player,
-        selected: player.alive ? null : player.selected,
-      })),
-    );
+  async function leaveRoom() {
+    const code = roomId;
+    const myId = myPlayerId;
 
-    setRound((r) => r + 1);
-    setRevealed(false);
-    setMessage("Choose your next animal.");
-  }
+    stopHeartbeat();
+    if (unsubRef.current) {
+      unsubRef.current();
+      unsubRef.current = null;
+    }
 
-  function resetGame() {
-    setGameStarted(false);
+    setConnected(false);
+    setIsHost(false);
+    setMyPlayerId(null);
+    setRoomId("");
     setPlayers([]);
-    setRound(1);
-    setWinner(null);
-    setRevealed(false);
+    setSelections({});
+    setPlayedCards({});
+    setWinnerId(null);
     setMessage("");
+    setGameStarted(false);
+    setRevealed(false);
+    setRound(1);
+    setNotice("");
+
+    if (!code || !myId) return;
+    try {
+      const roomRef = doc(db, "rooms", code);
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(roomRef);
+        if (!snap.exists()) return;
+
+        const d = snap.data();
+        const remaining = (d.players || []).filter((p) => p.id !== myId);
+
+        if (remaining.length === 0) {
+          tx.delete(roomRef);
+          return;
+        }
+
+        const updates = {
+          players: remaining,
+          [`presence.${myId}`]: deleteField(),
+          [`selections.${myId}`]: deleteField(),
+          [`playedCards.${myId}`]: deleteField(),
+        };
+        if (d.hostId === myId) updates.hostId = remaining[0].id;
+        tx.update(roomRef, updates);
+      });
+    } catch {
+      // ignore; heartbeat reaper will clean up stale entry
+    }
   }
+
+  async function startGame() {
+    if (!roomId) return;
+    if (players.length < 2) {
+      setNotice("Mindestens 2 Spieler werden für die Jagd gebraucht.");
+      return;
+    }
+    setNotice("");
+    await updateDoc(doc(db, "rooms", roomId), {
+      started: true,
+      message: "Wählt euer Tier – geheim!",
+    });
+  }
+
+  async function selectAnimal(animalId) {
+    if (revealed || !roomId || !myPlayerId) return;
+
+    const myPlayed = playedCards[myPlayerId] || [];
+    if (myPlayed.includes(animalId)) {
+      setNotice("Diese Karte hast du in diesem Spiel schon gespielt.");
+      return;
+    }
+    setNotice("");
+
+    await updateDoc(doc(db, "rooms", roomId), {
+      [`selections.${myPlayerId}`]: animalId,
+    });
+  }
+
+  function everyoneSelected() {
+    const alive = players.filter((p) => p.alive);
+    return alive.length > 0 && alive.every((p) => selections[p.id]);
+  }
+
+  async function revealRound() {
+    if (!roomId) return;
+
+    if (!everyoneSelected()) {
+      setNotice("Alle lebenden Spieler müssen erst ein Tier wählen.");
+      return;
+    }
+    setNotice("");
+
+    const roomRef = doc(db, "rooms", roomId);
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(roomRef);
+      const data = snap.data();
+      if (!data || data.revealed) return;
+
+      const sel = data.selections || {};
+      const aliveNotSelected = (data.players || []).filter(
+        (p) => p.alive && !sel[p.id],
+      );
+      if (aliveNotSelected.length > 0) return;
+
+      const result = computeReveal(data.players, sel);
+
+      const played = { ...(data.playedCards || {}) };
+      (data.players || []).forEach((p) => {
+        const choice = sel[p.id];
+        if (!choice) return;
+        const current = played[p.id] || [];
+        const updated = current.includes(choice)
+          ? current
+          : [...current, choice];
+        played[p.id] = updated.length >= animals.length ? [] : updated;
+      });
+
+      tx.update(roomRef, {
+        players: result.updatedPlayers,
+        revealed: true,
+        winner: result.winnerId,
+        message: result.message,
+        playedCards: played,
+      });
+    });
+  }
+
+  async function nextRound() {
+    if (!roomId) return;
+    setNotice("");
+    await updateDoc(doc(db, "rooms", roomId), {
+      selections: {},
+      revealed: false,
+      round: (round || 1) + 1,
+      message: "Wählt euer nächstes Tier.",
+    });
+  }
+
+  async function resetGame() {
+    if (!roomId) return;
+    setNotice("");
+    const resetPlayers = players.map((p) => ({
+      ...p,
+      alive: true,
+      score: 0,
+    }));
+    await updateDoc(doc(db, "rooms", roomId), {
+      players: resetPlayers,
+      selections: {},
+      playedCards: {},
+      revealed: false,
+      round: 1,
+      started: false,
+      winner: null,
+      message: "Neue Runde – wartet in der Lobby.",
+    });
+  }
+
+  function copyRoomCode() {
+    if (navigator.clipboard && roomId) {
+      navigator.clipboard.writeText(roomId);
+      setNotice("Raumcode kopiert!");
+    }
+  }
+
+  const myPlayer = players.find((p) => p.id === myPlayerId);
+  const mySelection = selections[myPlayerId];
+  const winner = winnerId ? players.find((p) => p.id === winnerId) : null;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <header className="space-y-2">
-          <h1 className="text-5xl font-bold tracking-tight">
-            Schnitzeljagd Inspired
+    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+        <header className="mb-8 text-center">
+          <h1 className="bg-gradient-to-r from-amber-300 via-orange-400 to-emerald-300 bg-clip-text text-4xl font-black tracking-tight text-transparent drop-shadow-sm sm:text-6xl">
+            Schnitzeljagd
           </h1>
-          <p className="text-zinc-400 text-lg">
-            Multiplayer bluffing and hunting game for local browser play.
+          <p className="mt-2 text-base text-zinc-300 sm:text-lg">
+            Online-Multiplayer • Bluffen & Jagen
           </p>
         </header>
 
-        {!gameStarted && (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 max-w-xl space-y-6">
-            <div>
-              <label className="block text-lg mb-3 font-semibold">
-                Number of Players
-              </label>
-
-              <select
-                value={playerCount}
-                onChange={(e) => setPlayerCount(Number(e.target.value))}
-                className="bg-zinc-800 rounded-xl px-4 py-3 w-full"
-              >
-                {[2, 3, 4, 5, 6].map((count) => (
-                  <option key={count} value={count}>
-                    {count} Players
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <button
-              onClick={startGame}
-              className="bg-green-600 hover:bg-green-500 transition px-6 py-4 rounded-2xl text-lg font-semibold w-full"
-            >
-              Start Game
-            </button>
+        {notice && (
+          <div className="mx-auto mb-6 max-w-2xl rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-center text-sm font-medium text-amber-100">
+            {notice}
           </div>
         )}
 
-        {gameStarted && (
-          <>
-            <div className="grid lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 space-y-6">
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div>
-                    <div className="text-zinc-400">Current Round</div>
-                    <div className="text-4xl font-bold">{round}</div>
-                  </div>
+        {!connected && (
+          <div className="mx-auto max-w-md space-y-5 rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur sm:p-8">
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-zinc-300">
+                Dein Name
+              </label>
+              <input
+                placeholder="z.B. Alex"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-zinc-900/70 px-4 py-3 text-lg outline-none transition focus:border-emerald-400/60 focus:ring-2 focus:ring-emerald-400/30"
+              />
+            </div>
 
-                  <div className="flex gap-3">
-                    {!revealed && !winner && (
-                      <button
-                        onClick={revealRound}
-                        className="bg-red-600 hover:bg-red-500 transition px-5 py-3 rounded-2xl font-semibold"
-                      >
-                        Reveal Hunt
-                      </button>
-                    )}
+            <button
+              onClick={createRoom}
+              disabled={busy}
+              className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 px-6 py-4 text-lg font-bold shadow-lg shadow-emerald-900/40 transition hover:scale-[1.02] hover:shadow-emerald-800/50 active:scale-95 disabled:opacity-50"
+            >
+              Neuen Raum erstellen
+            </button>
 
-                    {revealed && !winner && (
-                      <button
-                        onClick={nextRound}
-                        className="bg-blue-600 hover:bg-blue-500 transition px-5 py-3 rounded-2xl font-semibold"
-                      >
-                        Next Round
-                      </button>
-                    )}
+            <div className="flex items-center gap-3 text-xs uppercase tracking-widest text-zinc-500">
+              <span className="h-px flex-1 bg-white/10" />
+              oder beitreten
+              <span className="h-px flex-1 bg-white/10" />
+            </div>
 
-                    <button
-                      onClick={resetGame}
-                      className="bg-zinc-700 hover:bg-zinc-600 transition px-5 py-3 rounded-2xl font-semibold"
-                    >
-                      Reset
-                    </button>
-                  </div>
-                </div>
+            <div className="space-y-3">
+              <input
+                placeholder="Raumcode"
+                value={roomId}
+                onChange={(e) => setRoomId(e.target.value)}
+                className="w-full rounded-2xl border border-white/10 bg-zinc-900/70 px-4 py-3 text-center text-lg font-mono tracking-[0.3em] outline-none transition focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/30"
+              />
+              <button
+                onClick={joinRoom}
+                disabled={busy}
+                className="w-full rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-6 py-4 text-lg font-bold shadow-lg shadow-blue-900/40 transition hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+              >
+                Raum beitreten
+              </button>
+            </div>
+          </div>
+        )}
 
-                <div className="bg-zinc-800 rounded-2xl p-4 text-lg">
-                  {message}
-                </div>
-
-                {winner && (
-                  <div className="bg-green-600/20 border border-green-500 rounded-2xl p-6 text-center">
-                    <div className="text-2xl font-bold">
-                      {winner.name} wins!
-                    </div>
-                    <div className="text-zinc-300 mt-2">
-                      Final Score: {winner.score}
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid md:grid-cols-2 gap-5">
-                  {players.map((player) => (
-                    <div
-                      key={player.id}
-                      className={`rounded-3xl p-5 border ${
-                        player.alive
-                          ? "bg-zinc-800 border-zinc-700"
-                          : "bg-red-950/40 border-red-800 opacity-70"
-                      }`}
-                    >
-                      <div className="flex justify-between items-center mb-4">
-                        <div>
-                          <div className="text-2xl font-bold">
-                            {player.name}
-                          </div>
-                          <div className="text-zinc-400">
-                            Score: {player.score}
-                          </div>
-                        </div>
-
-                        <div
-                          className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                            player.alive ? "bg-green-600" : "bg-red-700"
-                          }`}
-                        >
-                          {player.alive ? "Alive" : "Hunted"}
-                        </div>
-                      </div>
-
-                      {player.alive && (
-                        <div className="grid grid-cols-2 gap-3">
-                          {animals.map((animal) => {
-                            const selected = player.selected === animal.id;
-
-                            return (
-                              <button
-                                key={animal.id}
-                                onClick={() =>
-                                  selectAnimal(player.id, animal.id)
-                                }
-                                className={`rounded-2xl p-3 text-left transition border ${animal.color} ${
-                                  selected
-                                    ? "border-white scale-105"
-                                    : "border-transparent opacity-80 hover:opacity-100"
-                                }`}
-                              >
-                                <div className="font-bold text-lg">
-                                  <>
-                                    <img
-                                      src={animal.image}
-                                      alt={animal.name}
-                                      className="w-full h-120px object-cover"
-                                    />
-
-                                    <div className="font-bold text-lg">
-                                      {animal.name}
-                                    </div>
-
-                                    <div className="text-xs opacity-90 mt-1">
-                                      {animal.description}
-                                    </div>
-
-                                    {revealed && (
-                                      <div className="mt-2 text-xs">
-                                        Hunts: {animal.hunts.length || "Nobody"}
-                                      </div>
-                                    )}
-                                  </>
-                                </div>
-
-                                {revealed && (
-                                  <div className="mt-2 text-xs">
-                                    Hunts: {animal.hunts.length || "Nobody"}
-                                  </div>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+        {connected && !gameStarted && (
+          <div className="mx-auto max-w-xl space-y-6">
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-center shadow-2xl backdrop-blur">
+              <div className="text-sm uppercase tracking-widest text-zinc-400">
+                Raumcode
               </div>
+              <button
+                onClick={copyRoomCode}
+                title="Kopieren"
+                className="mt-2 inline-flex flex-col items-center gap-1 rounded-2xl bg-zinc-900/70 px-6 py-3 font-mono text-3xl font-black tracking-[0.4em] text-emerald-300 transition hover:bg-zinc-800/70 sm:text-4xl"
+              >
+                {roomId.toUpperCase()}
+                <span className="text-xs font-sans font-semibold tracking-normal text-zinc-400">
+                  Kopieren
+                </span>
+              </button>
+              <p className="mt-3 text-sm text-zinc-400">
+                Teile den Code mit deinen Freunden, damit sie beitreten können.
+              </p>
+            </div>
 
-              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 space-y-5 h-fit">
-                <h2 className="text-2xl font-bold">Animal Guide</h2>
-
-                {animals.map((animal) => (
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur">
+              <h2 className="mb-4 text-xl font-bold">
+                Spieler ({players.length})
+              </h2>
+              <div className="space-y-2">
+                {players.map((p) => (
                   <div
-                    key={animal.id}
-                    className={`rounded-2xl p-4 ${animal.color}`}
+                    key={p.id}
+                    className="flex items-center justify-between rounded-2xl bg-zinc-900/60 px-4 py-3"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="text-xl font-bold">{animal.name}</div>
-
-                      <div className="bg-black/30 px-3 py-1 rounded-full text-sm">
-                        Power {animal.power}
-                      </div>
-                    </div>
-
-                    <div className="mt-2 text-sm opacity-90">
-                      {animal.description}
-                    </div>
-
-                    <div className="mt-3 text-sm font-semibold">Hunts:</div>
-
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {animal.hunts.length > 0 ? (
-                        animal.hunts.map((hunt) => (
-                          <div
-                            key={hunt}
-                            className="bg-black/30 px-2 py-1 rounded-lg text-xs"
-                          >
-                            {getAnimal(hunt).name}
-                          </div>
-                        ))
-                      ) : (
-                        <div className="bg-black/30 px-2 py-1 rounded-lg text-xs">
-                          No prey
-                        </div>
+                    <span className="flex items-center gap-3 font-semibold">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-sky-600 text-sm font-black">
+                        {p.name.slice(0, 2).toUpperCase()}
+                      </span>
+                      {p.name}
+                      {p.id === myPlayerId && (
+                        <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">
+                          du
+                        </span>
                       )}
-                    </div>
+                    </span>
+                    {p.id === hostId && (
+                      <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-300">
+                        Gastgeber
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
+
+              {isHost ? (
+                <button
+                  onClick={startGame}
+                  className="mt-5 w-full rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-4 text-lg font-bold shadow-lg shadow-orange-900/40 transition hover:scale-[1.02] active:scale-95"
+                >
+                  Spiel starten
+                </button>
+              ) : (
+                <p className="mt-5 text-center text-sm text-zinc-400">
+                  Warte, bis der Gastgeber das Spiel startet …
+                </p>
+              )}
+
+              <button
+                onClick={leaveRoom}
+                className="mt-3 w-full rounded-2xl bg-zinc-800/70 px-6 py-3 text-sm font-semibold text-zinc-300 transition hover:bg-zinc-700/70"
+              >
+                Raum verlassen
+              </button>
             </div>
-          </>
+          </div>
+        )}
+
+        {connected && gameStarted && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur">
+              <div>
+                <div className="text-xs uppercase tracking-widest text-zinc-400">
+                  Runde
+                </div>
+                <div className="text-3xl font-black">{round}</div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {!revealed && !winner && (
+                  <button
+                    onClick={revealRound}
+                    className="rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-5 py-3 font-bold shadow-lg shadow-rose-900/40 transition hover:scale-[1.03] active:scale-95"
+                  >
+                    Jagd aufdecken
+                  </button>
+                )}
+
+                {revealed && !winner && (
+                  <button
+                    onClick={nextRound}
+                    className="rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-5 py-3 font-bold shadow-lg shadow-blue-900/40 transition hover:scale-[1.03] active:scale-95"
+                  >
+                    Nächste Runde
+                  </button>
+                )}
+
+                <button
+                  onClick={resetGame}
+                  className="rounded-2xl bg-zinc-800/70 px-5 py-3 font-semibold text-zinc-200 transition hover:bg-zinc-700/70"
+                >
+                  Zurücksetzen
+                </button>
+
+                <button
+                  onClick={leaveRoom}
+                  className="rounded-2xl bg-zinc-800/70 px-5 py-3 font-semibold text-zinc-200 transition hover:bg-zinc-700/70"
+                >
+                  Verlassen
+                </button>
+              </div>
+            </div>
+
+            {message && (
+              <div className="rounded-2xl bg-zinc-900/60 px-5 py-4 text-center text-lg font-medium">
+                {message}
+              </div>
+            )}
+
+            {winner && (
+              <div className="rounded-3xl border border-emerald-400/40 bg-emerald-500/15 p-8 text-center shadow-2xl">
+                <div className="mt-2 text-3xl font-black">
+                  {winner.name} gewinnt!
+                </div>
+                <div className="mt-1 text-zinc-300">
+                  Endpunktzahl: {winner.score}
+                </div>
+              </div>
+            )}
+
+            {myPlayer && myPlayer.alive && !revealed && !winner && (
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur sm:p-6">
+                <div className="mb-1 flex items-center justify-between gap-3">
+                  <h2 className="text-xl font-bold">Deine geheime Wahl</h2>
+                  <span className="rounded-full bg-zinc-900/70 px-3 py-1 text-xs font-semibold text-zinc-300">
+                    Noch {animals.length - (playedCards[myPlayerId] || []).length}{" "}
+                    Karten
+                  </span>
+                </div>
+                <p className="mb-4 text-sm text-zinc-400">
+                  {mySelection
+                    ? "Wahl gespeichert. Du kannst sie bis zur Aufdeckung ändern."
+                    : "Wähle dein Tier – jede Karte ist pro Spiel nur einmal spielbar."}
+                </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                  {animals.map((animal) => {
+                    const selected = mySelection === animal.id;
+                    const isPlayed = (playedCards[myPlayerId] || []).includes(
+                      animal.id,
+                    );
+                    return (
+                      <button
+                        key={animal.id}
+                        onClick={() => selectAnimal(animal.id)}
+                        disabled={isPlayed}
+                        aria-disabled={isPlayed}
+                        className={`group rounded-3xl bg-gradient-to-br ${animal.color} p-3 text-left shadow-lg transition ${
+                          isPlayed
+                            ? "cursor-not-allowed opacity-40 grayscale"
+                            : "hover:scale-[1.04] active:scale-95"
+                        } ${
+                          selected
+                            ? `ring-4 ${animal.ring} scale-[1.04]`
+                            : isPlayed
+                              ? ""
+                              : "opacity-90 hover:opacity-100"
+                        }`}
+                      >
+                        <AnimalArt
+                          animal={animal}
+                          className="h-64 w-full rounded-2xl bg-black/20 sm:h-72"
+                        />
+                        <div className="mt-2">
+                          <AnimalCardInfo animal={animal} />
+                        </div>
+                        {isPlayed ? (
+                          <div className="mt-2 rounded-full bg-black/40 px-2 py-1 text-center text-xs font-bold">
+                            Bereits gespielt
+                          </div>
+                        ) : (
+                          selected && (
+                            <div className="mt-2 rounded-full bg-white/20 px-2 py-1 text-center text-xs font-bold">
+                              ✓ Gewählt
+                            </div>
+                          )
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {myPlayer && !myPlayer.alive && (
+              <div className="rounded-3xl border border-red-500/40 bg-red-950/40 p-6 text-center text-lg font-semibold text-red-200">
+                Du wurdest gejagt – du schaust beim Rest der Jagd zu.
+              </div>
+            )}
+
+            <div>
+              <h2 className="mb-3 text-xl font-bold">Spieler</h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {players.map((player) => {
+                  const choice = getAnimal(selections[player.id]);
+                  const hasChosen = !!selections[player.id];
+                  const isMe = player.id === myPlayerId;
+                  return (
+                    <div
+                      key={player.id}
+                      className={`rounded-3xl border p-5 shadow-xl transition ${
+                        player.alive
+                          ? "border-white/10 bg-white/5"
+                          : "border-red-800/50 bg-red-950/30 opacity-70"
+                      } ${isMe ? "ring-2 ring-emerald-400/50" : ""}`}
+                    >
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-bold">
+                            {player.name}
+                          </span>
+                          {isMe && (
+                            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">
+                              du
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${
+                            player.alive
+                              ? "bg-emerald-500/80"
+                              : "bg-red-700/80"
+                          }`}
+                        >
+                          {player.alive ? "Lebt" : "Gejagt"}
+                        </span>
+                      </div>
+
+                      <div className="mb-3 text-sm text-zinc-400">
+                        Punkte: <span className="text-white">{player.score}</span>
+                      </div>
+
+                      {revealed && choice ? (
+                        <div
+                          className={`flex items-center gap-3 rounded-2xl bg-gradient-to-br ${choice.color} p-3`}
+                        >
+                          <AnimalArt
+                            animal={choice}
+                            className="h-20 w-20 shrink-0 rounded-xl bg-black/20"
+                          />
+                          <AnimalCardInfo animal={choice} compact />
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl bg-zinc-900/60 px-4 py-3 text-center text-sm">
+                          {player.alive ? (
+                            hasChosen ? (
+                              <span className="text-emerald-300">
+                                ✓ Bereit
+                              </span>
+                            ) : (
+                              <span className="text-zinc-400">
+                                Wählt ...
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-red-300">Ausgeschieden</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+          </div>
         )}
       </div>
     </div>
