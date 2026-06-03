@@ -584,14 +584,24 @@ export default function SchnitzeljagdInspiredGame() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white">
-      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-8 sm:py-10">
-        <header className="mb-8 text-center">
-          <h1 className="bg-gradient-to-r from-amber-300 via-orange-400 to-emerald-300 bg-clip-text text-4xl font-black tracking-tight text-transparent drop-shadow-sm sm:text-6xl">
+      <div
+        className={`mx-auto max-w-[1500px] px-4 sm:px-8 ${
+          connected && gameStarted ? "py-4 sm:py-5" : "py-6 sm:py-10"
+        }`}
+      >
+        <header className={`${connected && gameStarted ? "mb-4" : "mb-8"} text-center`}>
+          <h1
+            className={`bg-gradient-to-r from-amber-300 via-orange-400 to-emerald-300 bg-clip-text font-black tracking-tight text-transparent drop-shadow-sm ${
+              connected && gameStarted ? "text-3xl sm:text-5xl" : "text-4xl sm:text-6xl"
+            }`}
+          >
             Schnitzeljagd
           </h1>
-          <p className="mt-2 text-base text-zinc-300 sm:text-lg">
-            Online-Multiplayer • Bluffen & Jagen
-          </p>
+          {!gameStarted && (
+            <p className="mt-2 text-base text-zinc-300 sm:text-lg">
+              Online-Multiplayer • Bluffen & Jagen
+            </p>
+          )}
         </header>
 
         {notice && (
@@ -721,51 +731,33 @@ export default function SchnitzeljagdInspiredGame() {
         )}
 
         {connected && gameStarted && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur">
-              <div>
-                <div className="text-xs uppercase tracking-widest text-zinc-400">
-                  Runde
-                </div>
-                <div className="text-3xl font-black">{round}</div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {!revealed && !winner && (
-                  <button
-                    onClick={revealRound}
-                    className="rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-5 py-3 font-bold shadow-lg shadow-rose-900/40 transition hover:scale-[1.03] active:scale-95"
-                  >
-                    Jagd aufdecken
-                  </button>
-                )}
-
-                {revealed && !winner && (
-                  <button
-                    onClick={nextRound}
-                    className="rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-5 py-3 font-bold shadow-lg shadow-blue-900/40 transition hover:scale-[1.03] active:scale-95"
-                  >
-                    Nächste Runde
-                  </button>
-                )}
-
+          <div className="space-y-4">
+            <div className="flex flex-wrap justify-end gap-2">
+              {revealed && !winner && (
                 <button
-                  onClick={resetGame}
-                  className="rounded-2xl bg-zinc-800/70 px-5 py-3 font-semibold text-zinc-200 transition hover:bg-zinc-700/70"
+                  onClick={nextRound}
+                  className="rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-sm font-bold shadow-lg shadow-blue-900/40 transition hover:scale-[1.03] active:scale-95"
                 >
-                  Zurücksetzen
+                  Nächste Runde
                 </button>
+              )}
 
-                <button
-                  onClick={leaveRoom}
-                  className="rounded-2xl bg-zinc-800/70 px-5 py-3 font-semibold text-zinc-200 transition hover:bg-zinc-700/70"
-                >
-                  Verlassen
-                </button>
-              </div>
+              <button
+                onClick={resetGame}
+                className="rounded-2xl bg-zinc-800/70 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/70"
+              >
+                Zurücksetzen
+              </button>
+
+              <button
+                onClick={leaveRoom}
+                className="rounded-2xl bg-zinc-800/70 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/70"
+              >
+                Verlassen
+              </button>
             </div>
 
-            {message && (
+            {revealed && message && !winner && (
               <div className="rounded-2xl bg-zinc-900/60 px-5 py-4 text-center text-lg font-medium">
                 {message}
               </div>
@@ -783,20 +775,28 @@ export default function SchnitzeljagdInspiredGame() {
             )}
 
             {myPlayer && myPlayer.alive && !revealed && !winner && (
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur sm:p-6">
-                <div className="mb-1 flex items-center justify-between gap-3">
-                  <h2 className="text-xl font-bold">Deine geheime Wahl</h2>
-                  <span className="rounded-full bg-zinc-900/70 px-3 py-1 text-xs font-semibold text-zinc-300">
-                    Noch {animals.length - (playedCards[myPlayerId] || []).length}{" "}
-                    Karten
-                  </span>
+              <div className="rounded-3xl border border-white/10 bg-white/5 p-4 shadow-2xl backdrop-blur sm:p-5">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="text-xl font-bold">Deine geheime Wahl</h2>
+                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-300">
+                      Runde {round}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={revealRound}
+                      className="rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-5 py-3 font-bold shadow-lg shadow-rose-900/40 transition hover:scale-[1.03] active:scale-95"
+                    >
+                      Jagd aufdecken
+                    </button>
+                    <span className="rounded-full bg-zinc-900/70 px-3 py-1 text-xs font-semibold text-zinc-300">
+                      Noch {animals.length - (playedCards[myPlayerId] || []).length}{" "}
+                      Karten
+                    </span>
+                  </div>
                 </div>
-                <p className="mb-4 text-sm text-zinc-400">
-                  {mySelection
-                    ? "Wahl gespeichert. Du kannst sie bis zur Aufdeckung ändern."
-                    : "Wähle dein Tier – jede Karte ist pro Spiel nur einmal spielbar."}
-                </p>
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-5 xl:gap-5">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-5 xl:gap-4">
                   {animals.map((animal) => {
                     const selected = mySelection === animal.id;
                     const isPlayed = (playedCards[myPlayerId] || []).includes(
@@ -822,7 +822,7 @@ export default function SchnitzeljagdInspiredGame() {
                       >
                         <AnimalArt
                           animal={animal}
-                          className="h-64 w-full rounded-2xl bg-black/20 sm:h-72"
+                          className="h-48 w-full rounded-2xl bg-black/20 sm:h-56 xl:h-64"
                         />
                         <div className="mt-2">
                           <AnimalCardInfo animal={animal} />
@@ -853,7 +853,7 @@ export default function SchnitzeljagdInspiredGame() {
 
             <div>
               <h2 className="mb-3 text-xl font-bold">Spieler</h2>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 xl:gap-4">
                 {players.map((player) => {
                   const choice = getAnimal(selections[player.id]);
                   const hasChosen = !!selections[player.id];
@@ -861,25 +861,25 @@ export default function SchnitzeljagdInspiredGame() {
                   return (
                     <div
                       key={player.id}
-                      className={`rounded-3xl border p-5 shadow-xl transition ${
+                      className={`min-w-0 rounded-3xl border p-3 shadow-xl transition xl:p-4 ${
                         player.alive
                           ? "border-white/10 bg-white/5"
                           : "border-red-800/50 bg-red-950/30 opacity-70"
                       } ${isMe ? "ring-2 ring-emerald-400/50" : ""}`}
                     >
-                      <div className="mb-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg font-bold">
+                      <div className="mb-3 flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex items-center gap-2">
+                          <span className="truncate text-base font-bold xl:text-lg">
                             {player.name}
                           </span>
                           {isMe && (
-                            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">
+                            <span className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">
                               du
                             </span>
                           )}
                         </div>
                         <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold ${
+                          className={`shrink-0 rounded-full px-2 py-1 text-xs font-bold xl:px-3 ${
                             player.alive
                               ? "bg-emerald-500/80"
                               : "bg-red-700/80"
@@ -895,16 +895,18 @@ export default function SchnitzeljagdInspiredGame() {
 
                       {revealed && choice ? (
                         <div
-                          className={`flex items-center gap-3 rounded-2xl bg-gradient-to-br ${choice.color} p-3`}
+                          className={`rounded-2xl bg-gradient-to-br ${choice.color} p-2 xl:p-3`}
                         >
                           <AnimalArt
                             animal={choice}
-                            className="h-20 w-20 shrink-0 rounded-xl bg-black/20"
+                            className="h-24 w-full rounded-xl bg-black/20"
                           />
-                          <AnimalCardInfo animal={choice} compact />
+                          <div className="mt-2">
+                            <AnimalCardInfo animal={choice} compact />
+                          </div>
                         </div>
                       ) : (
-                        <div className="rounded-2xl bg-zinc-900/60 px-4 py-3 text-center text-sm">
+                        <div className="rounded-2xl bg-zinc-900/60 px-3 py-3 text-center text-sm">
                           {player.alive ? (
                             hasChosen ? (
                               <span className="text-emerald-300">
@@ -923,7 +925,7 @@ export default function SchnitzeljagdInspiredGame() {
 
                       {(playedCards[player.id] || []).length > 0 && (
                         <div className="mt-3 border-t border-white/10 pt-3">
-                          <div className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
                             Gespielte Karten
                           </div>
                           <div className="mt-2 flex flex-wrap gap-2">
@@ -932,12 +934,12 @@ export default function SchnitzeljagdInspiredGame() {
                               return (
                                 <span
                                   key={id}
-                                  className="inline-flex items-center gap-2 rounded-full bg-zinc-800/80 px-4 py-2 text-sm font-medium text-zinc-200"
+                                  className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800/80 px-3 py-1.5 text-xs font-medium text-zinc-200"
                                 >
                                   {animal?.emoji && (
                                     <span
                                       aria-hidden="true"
-                                      className="text-xl leading-none"
+                                      className="text-base leading-none"
                                     >
                                       {animal.emoji}
                                     </span>
