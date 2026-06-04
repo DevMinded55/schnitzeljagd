@@ -58,7 +58,7 @@ export function buildRevealDisplay(lastCall, players, selections) {
 
   if (outcome === "hunter") {
     const cards = [
-      cardEntry(players, lastCall.hunterId, lastCall.animalId, "Jägt"),
+      cardEntry(players, lastCall.hunterId, lastCall.animalId, "Jagt"),
     ].filter(Boolean);
     const hunter = players.find((p) => p.id === lastCall.hunterId);
     return {
@@ -78,7 +78,7 @@ export function buildRevealDisplay(lastCall, players, selections) {
       players,
       lastCall.hunterId,
       lastCall.animalId,
-      "Jägt",
+      "Jagt",
     );
     if (hunterCard) cards.push(hunterCard);
 
@@ -121,7 +121,7 @@ export function badgeClassName(badge) {
   if (badge === "Blockiert") {
     return "bg-amber-500/25 text-amber-100 ring-amber-400/40";
   }
-  if (badge === "Jägt") {
+  if (badge === "Jagt") {
     return "bg-emerald-500/25 text-emerald-100 ring-emerald-400/40";
   }
   if (badge === "Beute") {
