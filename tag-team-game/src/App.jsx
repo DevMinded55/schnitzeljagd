@@ -739,6 +739,11 @@ export default function SchnitzeljagdInspiredGame() {
       setNotice("Nur der Gastgeber kann das.");
       return;
     }
+    if (lastCall) {
+      setNotice("");
+      await applyEngineUpdate((data) => ({ ...data, lastCall: null }));
+      return;
+    }
     if (!everyoneSelected()) {
       setNotice("Alle aktiven Spieler müssen erst eine Karte wählen.");
       return;
@@ -836,14 +841,14 @@ export default function SchnitzeljagdInspiredGame() {
     : null;
   const hunterAnimal = callingAnimalId ? getAnimal(callingAnimalId) : null;
   const validPrey = callingAnimalId ? getValidPrey(callingAnimalId) : [];
-  const canPickCards = phase === "select" && myPlayer?.alive && !gameWinnerId;
+  const canPickCards =
+    phase === "select" && myPlayer?.alive && !gameWinnerId && !lastCall;
   const isHunter =
     phase === "huntPick" && myPlayerId === currentHunterId;
 
   const revealDisplay = React.useMemo(() => {
-    if (!lastCall || phase === "select" || !REVEAL_PHASES.has(phase)) {
-      return null;
-    }
+    if (!lastCall) return null;
+    if (!REVEAL_PHASES.has(phase) && phase !== "select") return null;
     return buildRevealDisplay(lastCall, players, selections);
   }, [lastCall, players, selections, phase]);
 
@@ -1107,14 +1112,16 @@ export default function SchnitzeljagdInspiredGame() {
               />
             )}
 
-            {isHost && phase === "select" && everyoneSelected() && (
+            {isHost && phase === "select" && (lastCall || everyoneSelected()) && (
               <div className="flex justify-end">
                 <button
                   type="button"
                   onClick={hostStartCalling}
                   className="rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-5 py-3 text-sm font-bold shadow-lg shadow-rose-900/40 transition hover:scale-[1.03] active:scale-95"
                 >
-                  Aufruf starten (Jagd {huntIndex})
+                  {lastCall
+                    ? "Weiter"
+                    : `Aufruf starten (Jagd ${huntIndex})`}
                 </button>
               </div>
             )}

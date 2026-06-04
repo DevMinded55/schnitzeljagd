@@ -304,7 +304,6 @@ export function finishHunt(room, { message } = {}) {
     callIndex: 0,
     currentHunterId: null,
     callingAnimalId: null,
-    lastCall: null,
     message:
       message ||
       `Jagd ${huntIndex} fertig. Jagd ${huntIndex + 1}: wählt verdeckt eine Karte.`,
