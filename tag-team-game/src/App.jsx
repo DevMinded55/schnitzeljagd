@@ -871,7 +871,7 @@ export default function SchnitzeljagdInspiredGame() {
 
   return (
     <div
-      className={`${connected && gameStarted ? "h-svh overflow-hidden" : "min-h-screen"} bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white`}
+      className={`${connected && gameStarted ? "min-h-screen lg:h-svh lg:overflow-hidden" : "min-h-screen"} bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white`}
     >
       <div className="fixed inset-x-0 top-0 z-40 border-b border-white/5 bg-zinc-950/80 backdrop-blur md:hidden">
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 px-3 py-2.5">
@@ -945,7 +945,7 @@ export default function SchnitzeljagdInspiredGame() {
       <div
         className={`mx-auto max-w-[1500px] px-4 sm:px-8 md:pt-0 ${
           connected && gameStarted
-            ? "h-full overflow-hidden pt-14 pb-3 sm:pb-4 md:py-3 md:sm:py-4"
+            ? "pt-14 pb-3 sm:pb-4 md:py-3 md:sm:py-4 lg:h-full lg:overflow-hidden"
             : "pt-[4.5rem] pb-6 sm:pb-10 md:py-6 md:sm:py-10"
         }`}
       >
