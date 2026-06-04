@@ -23,6 +23,7 @@ import {
 import {
   processAnimalCall,
   resolveHuntPick,
+  resolveHuntWithoutPreyChoice,
   startCallingPhase,
   startNextDurchgang,
   initialRoomPlayer,
@@ -853,6 +854,20 @@ export default function SchnitzeljagdInspiredGame() {
   }, [lastCall]);
 
   const hideListMiniCards = (revealDisplay?.cards?.length ?? 0) > 0;
+
+  React.useEffect(() => {
+    if (!isHost || !roomId || phase !== "huntPick" || !callingAnimalId) return;
+    if (getValidPrey(callingAnimalId).length > 0) return;
+    const hunter = players.find((p) => p.id === currentHunterId);
+    if (!hunter) return;
+    applyEngineUpdate((data) => {
+      if (data.phase !== "huntPick" || !data.callingAnimalId) return data;
+      if (getValidPrey(data.callingAnimalId).length > 0) return data;
+      const h = (data.players || []).find((p) => p.id === data.currentHunterId);
+      if (!h) return data;
+      return resolveHuntWithoutPreyChoice(data, h, data.callingAnimalId);
+    });
+  }, [isHost, roomId, phase, callingAnimalId, currentHunterId, players]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white">

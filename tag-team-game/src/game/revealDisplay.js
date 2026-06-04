@@ -91,11 +91,18 @@ export function buildRevealDisplay(lastCall, players, selections) {
     });
 
     const prey = getAnimal(preyId);
+    const hunter = players.find((p) => p.id === lastCall.hunterId);
     let subtitle;
     if (eatenIds.length === 0) {
-      subtitle = prey
-        ? `Niemand hatte ${prey.name} – nichts passiert.`
-        : "Niemand erwischt.";
+      if (!preyId) {
+        subtitle = hunter
+          ? `${hunter.name} kann niemanden jagen.`
+          : "Kann niemanden jagen.";
+      } else if (prey) {
+        subtitle = `Niemand hatte ${prey.name} – nichts passiert.`;
+      } else {
+        subtitle = "Niemand erwischt.";
+      }
     } else {
       const names = eatenIds
         .map((id) => playerName(players, id))

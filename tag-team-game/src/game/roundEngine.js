@@ -3,6 +3,7 @@ import {
   MAX_HUNTS_PER_DURCHGANG,
   getAnimal,
   canHunt,
+  getValidPrey,
 } from "./animals.js";
 import { distributeFood } from "./scoring.js";
 
@@ -137,6 +138,9 @@ export function processAnimalCall(room) {
   }
 
   const hunter = matches[0];
+  if (getValidPrey(animalId).length === 0) {
+    return resolveHuntWithoutPreyChoice(room, hunter, animalId);
+  }
   return {
     ...room,
     phase: "huntPick",
@@ -144,6 +148,45 @@ export function processAnimalCall(room) {
     callingAnimalId: animalId,
     lastCall: { animalId, type: "hunter", hunterId: hunter.id },
     message: `${hunter.name} (${animal?.name}) wählt die Beute …`,
+  };
+}
+
+/**
+ * Jäger kann niemanden jagen (z. B. Maus) – Beuteauswahl überspringen.
+ */
+export function resolveHuntWithoutPreyChoice(room, hunter, animalId) {
+  const animal = getAnimal(animalId);
+  const { tableOpen, callIndex } = room;
+  const open = appendTableOpen(tableOpen, hunter.id, animalId);
+  const msg = `${hunter.name} (${animal?.name}) kann niemanden jagen.`;
+  const next = callIndex + 1;
+  const base = {
+    ...room,
+    tableOpen: open,
+    phase: "calling",
+    currentHunterId: null,
+    callingAnimalId: null,
+    pendingPrey: null,
+    callIndex: next,
+    lastCall: {
+      animalId,
+      type: "hunt",
+      hunterId: hunter.id,
+      preyId: null,
+      eatenIds: [],
+    },
+  };
+
+  const earlyFinish = maybeFinishHuntIfAllRevealed(base, msg);
+  if (earlyFinish) return earlyFinish;
+
+  if (next >= CALL_ORDER.length) {
+    return finishHunt(base, { message: msg + " Jagd beendet." });
+  }
+
+  return {
+    ...base,
+    message: msg + ` Weiter: ${getAnimal(CALL_ORDER[next])?.name}.`,
   };
 }
 
