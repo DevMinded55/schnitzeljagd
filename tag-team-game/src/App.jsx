@@ -17,6 +17,7 @@ import {
   getValidPrey,
   formatValidPrey,
   isCardOnTable,
+  sumDurchgangValues,
   WIN_FOOD,
 } from "./game/animals.js";
 import {
@@ -1289,6 +1290,7 @@ export default function SchnitzeljagdInspiredGame() {
                   const openCards = (tableOpen[player.id] || [])
                     .map(getAnimal)
                     .filter(Boolean);
+                  const valuePoints = sumDurchgangValues(durchgangPlays[player.id]);
                   const showChoice =
                     !hideListMiniCards &&
                     phase !== "select" &&
@@ -1333,6 +1335,10 @@ export default function SchnitzeljagdInspiredGame() {
                         <span>
                           🌾{" "}
                           <span className="text-white">{player.food || 0}</span>
+                        </span>
+                        <span>
+                          Wert{" "}
+                          <span className="text-white">{valuePoints}</span>
                         </span>
                         {showChoice && choice ? (
                           <span
