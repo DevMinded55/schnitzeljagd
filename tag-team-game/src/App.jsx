@@ -1348,7 +1348,7 @@ export default function SchnitzeljagdInspiredGame() {
 
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-tight text-zinc-400">
                         <span>
-                          🌾{" "}
+                          🍖{" "}
                           <span className="text-white">{player.food || 0}</span>
                         </span>
                         <span>
