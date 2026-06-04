@@ -119,31 +119,31 @@ function RevealStage({ display }) {
     <section
       aria-live="polite"
       aria-label="Aufgedeckte Karten"
-      className="reveal-animate-stage mx-auto w-full max-w-2xl [animation:revealStageIn_0.45s_cubic-bezier(0.22,1,0.36,1)_both]"
+      className="reveal-animate-stage mx-auto w-full max-w-xl [animation:revealStageIn_0.45s_cubic-bezier(0.22,1,0.36,1)_both]"
     >
-      <div className="flex flex-col items-center justify-center rounded-3xl border border-white/15 bg-zinc-900/80 px-4 py-6 shadow-2xl backdrop-blur [animation:revealGlowPulse_1.2s_ease-in-out_0.2s_both] sm:px-8 sm:py-8">
-        <h2 className="reveal-animate-headline text-center text-lg font-bold text-white [animation:revealHeadlineIn_0.4s_ease-out_0.08s_both] sm:text-xl">
+      <div className="flex flex-col items-center justify-center rounded-3xl border border-white/15 bg-zinc-900/80 px-4 py-4 shadow-2xl backdrop-blur [animation:revealGlowPulse_1.2s_ease-in-out_0.2s_both] sm:px-6 sm:py-5">
+        <h2 className="reveal-animate-headline text-center text-lg font-bold text-white [animation:revealHeadlineIn_0.4s_ease-out_0.08s_both]">
           {headline}
         </h2>
         {subtitle && (
-          <p className="reveal-animate-headline mt-2 max-w-md text-center text-sm text-zinc-300 [animation:revealHeadlineIn_0.4s_ease-out_0.16s_both]">
+          <p className="reveal-animate-headline mt-1.5 max-w-md text-center text-sm text-zinc-300 [animation:revealHeadlineIn_0.4s_ease-out_0.16s_both]">
             {subtitle}
           </p>
         )}
 
         {cards.length > 0 ? (
-          <ul className="mt-6 flex w-full flex-wrap items-start justify-center gap-4 sm:gap-6">
+          <ul className="mt-4 flex w-full flex-wrap items-start justify-center gap-3 sm:gap-4">
             {cards.map((entry, index) => {
               const cardDelay = 0.12 + index * (cardStaggerMs / 1000);
               const badgeDelay = cardDelay + cardFlipMs / 1000 + 0.05;
               return (
                 <li
                   key={`${entry.playerId}-${entry.animal.id}-${entry.badge}`}
-                  className="flex w-[min(100%,10.5rem)] flex-col items-center sm:w-44"
+                  className="flex w-[min(100%,11.75rem)] flex-col items-center sm:w-52"
                   style={{ perspective: "900px" }}
                 >
                   <span
-                    className="reveal-animate-headline mb-2 max-w-full truncate text-center text-sm font-semibold text-zinc-100"
+                    className="reveal-animate-headline mb-1.5 max-w-full truncate text-center text-sm font-semibold text-zinc-100"
                     style={{
                       animation: `revealHeadlineIn 0.35s ease-out ${cardDelay - 0.06}s both`,
                     }}
@@ -157,12 +157,12 @@ function RevealStage({ display }) {
                     <AnimalArt
                       animal={entry.animal}
                       fit="contain"
-                      className="mx-auto aspect-[5/7] w-full max-w-[11rem] rounded-xl bg-black/25"
+                      className="mx-auto aspect-[5/7] w-full max-w-52 rounded-xl bg-black/25"
                     />
                   </div>
                   {entry.badge && (
                     <span
-                      className={`reveal-animate-badge mt-2 rounded-full px-3 py-1 text-xs font-bold ring-1 [animation:revealBadgePop_0.45s_cubic-bezier(0.34,1.4,0.64,1)_both] ${badgeClassName(entry.badge)}`}
+                      className={`reveal-animate-badge mt-1.5 rounded-full px-3 py-1 text-xs font-bold ring-1 [animation:revealBadgePop_0.45s_cubic-bezier(0.34,1.4,0.64,1)_both] ${badgeClassName(entry.badge)}`}
                       style={{ animationDelay: `${badgeDelay}s` }}
                     >
                       {entry.badge}
@@ -175,7 +175,7 @@ function RevealStage({ display }) {
         ) : (
           calledAnimal && (
             <div
-              className={`reveal-animate-empty mt-6 w-36 overflow-hidden rounded-2xl bg-gradient-to-br p-2 sm:w-40 ${calledAnimal.color} [animation:revealCardFlip_0.55s_cubic-bezier(0.34,1.2,0.64,1)_0.2s_both] [transform-style:preserve-3d]`}
+              className={`reveal-animate-empty mt-4 w-44 overflow-hidden rounded-2xl bg-gradient-to-br p-2 sm:w-48 ${calledAnimal.color} [animation:revealCardFlip_0.55s_cubic-bezier(0.34,1.2,0.64,1)_0.2s_both] [transform-style:preserve-3d]`}
             >
               <AnimalArt
                 animal={calledAnimal}
@@ -843,6 +843,8 @@ export default function SchnitzeljagdInspiredGame() {
   const validPrey = callingAnimalId ? getValidPrey(callingAnimalId) : [];
   const canPickCards =
     phase === "select" && myPlayer?.alive && !gameWinnerId && !lastCall;
+  const canHostStartCalling =
+    isHost && phase === "select" && !lastCall && everyoneSelected();
   const isHunter =
     phase === "huntPick" && myPlayerId === currentHunterId;
 
@@ -876,7 +878,7 @@ export default function SchnitzeljagdInspiredGame() {
 
   return (
     <div
-      className={`${connected && gameStarted ? "min-h-screen lg:h-svh lg:overflow-hidden" : "min-h-screen"} bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white`}
+      className="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white"
     >
       <div className="fixed inset-x-0 top-0 z-40 border-b border-white/5 bg-zinc-950/80 backdrop-blur md:hidden">
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 px-3 py-2.5">
@@ -950,16 +952,16 @@ export default function SchnitzeljagdInspiredGame() {
       <div
         className={`mx-auto max-w-[1500px] px-4 sm:px-8 md:pt-0 ${
           connected && gameStarted
-            ? "pt-14 pb-3 sm:pb-4 md:py-3 md:sm:py-4 lg:h-full lg:overflow-hidden"
+            ? "pt-14 pb-5 sm:pb-6 md:py-3 md:sm:py-4"
             : "pt-[4.5rem] pb-6 sm:pb-10 md:py-6 md:sm:py-10"
         }`}
       >
         <header
-          className={`${connected && gameStarted ? "mb-4 md:mb-4" : "mb-8 md:mb-8"} hidden text-center md:block`}
+          className={`${connected && gameStarted ? "mb-3 md:mb-3" : "mb-8 md:mb-8"} hidden text-center md:block`}
         >
           <h1
             className={`bg-gradient-to-r from-amber-300 via-orange-400 to-emerald-300 bg-clip-text pb-1.5 font-black leading-normal tracking-tight text-transparent drop-shadow-sm sm:pb-2 ${
-              connected && gameStarted ? "text-3xl sm:text-5xl" : "text-4xl sm:text-6xl"
+              connected && gameStarted ? "text-3xl sm:text-4xl" : "text-4xl sm:text-6xl"
             }`}
           >
             Schnitzeljagd
@@ -1112,16 +1114,14 @@ export default function SchnitzeljagdInspiredGame() {
               />
             )}
 
-            {isHost && phase === "select" && (lastCall || everyoneSelected()) && (
+            {isHost && phase === "select" && lastCall && (
               <div className="flex justify-end">
                 <button
                   type="button"
                   onClick={hostStartCalling}
                   className="rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-5 py-3 text-sm font-bold shadow-lg shadow-rose-900/40 transition hover:scale-[1.03] active:scale-95"
                 >
-                  {lastCall
-                    ? "Weiter"
-                    : `Aufruf starten (Jagd ${huntIndex})`}
+                  Weiter
                 </button>
               </div>
             )}
@@ -1209,7 +1209,15 @@ export default function SchnitzeljagdInspiredGame() {
                       Durchgang {durchgangIndex} · Jagd {huntIndex}
                     </span>
                   </div>
-                  {!isHost && (
+                  {canHostStartCalling ? (
+                    <button
+                      type="button"
+                      onClick={hostStartCalling}
+                      className="w-full rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-5 py-3 text-sm font-bold shadow-lg shadow-rose-900/40 transition hover:scale-[1.03] active:scale-95 sm:w-auto"
+                    >
+                      Aufruf starten (Jagd {huntIndex})
+                    </button>
+                  ) : !isHost && (
                     <span className="text-sm text-zinc-400">
                       Warte auf den Aufruf durch den Gastgeber …
                     </span>
@@ -1266,20 +1274,22 @@ export default function SchnitzeljagdInspiredGame() {
             )}
 
             {isHunter && hunterAnimal && (
-              <div className="rounded-3xl border border-amber-400/40 bg-amber-500/10 p-4 shadow-2xl">
-                <h2 className="text-xl font-bold">
-                  Du jagst als {hunterAnimal.name}
-                </h2>
-                <p className="mt-1 text-sm text-zinc-300">
-                  Wähle deine Beute (schwächeres Tier):
-                </p>
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-3xl border border-amber-400/40 bg-amber-500/10 p-3 shadow-2xl">
+                <div className="flex flex-wrap items-end justify-between gap-2">
+                  <h2 className="text-lg font-bold">
+                    Du jagst als {hunterAnimal.name}
+                  </h2>
+                  <p className="text-xs text-zinc-300">
+                    Wähle deine Beute (schwächeres Tier)
+                  </p>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {validPrey.map((prey) => (
                     <button
                       key={prey.id}
                       type="button"
                       onClick={() => pickPrey(prey.id)}
-                      className={`rounded-xl bg-gradient-to-br ${prey.color} px-3 py-3 text-sm font-bold shadow-md transition hover:scale-[1.02] active:scale-95`}
+                      className={`rounded-xl bg-gradient-to-br ${prey.color} px-3 py-2 text-sm font-bold shadow-md transition hover:scale-[1.02] active:scale-95`}
                     >
                       {prey.emoji} {prey.name}
                     </button>
@@ -1305,7 +1315,7 @@ export default function SchnitzeljagdInspiredGame() {
               )}
 
             <div>
-              <h2 className="mb-1 text-base font-bold">Spieler</h2>
+              <h2 className="mb-1 text-sm font-bold">Spieler</h2>
               <div className="grid gap-1.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
                 {players.map((player) => {
                   const choice = getAnimal(selections[player.id]);
@@ -1327,7 +1337,7 @@ export default function SchnitzeljagdInspiredGame() {
                   return (
                     <div
                       key={player.id}
-                      className={`flex min-h-24 min-w-0 flex-col justify-between rounded-xl border p-3 shadow-md transition ${
+                      className={`flex min-h-20 min-w-0 flex-col justify-between rounded-xl border p-2 shadow-md transition ${
                         player.alive
                           ? "border-white/10 bg-white/5"
                           : "border-red-800/50 bg-red-950/30 opacity-70"
@@ -1335,7 +1345,7 @@ export default function SchnitzeljagdInspiredGame() {
                     >
                       <div className="flex items-center justify-between gap-1.5">
                         <div className="flex min-w-0 items-center gap-1">
-                          <span className="truncate text-base font-bold leading-tight">
+                          <span className="truncate text-sm font-bold leading-tight">
                             {player.name}
                           </span>
                           {isMe && (
@@ -1355,7 +1365,7 @@ export default function SchnitzeljagdInspiredGame() {
                         </span>
                       </div>
 
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-tight text-zinc-400">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs leading-tight text-zinc-400">
                         <span>
                           🍖{" "}
                           <span className="text-white">{player.food || 0}</span>
