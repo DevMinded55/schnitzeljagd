@@ -30,10 +30,10 @@ import {
 } from "./game/roundEngine.js";
 import { buildRevealDisplay, badgeClassName } from "./game/revealDisplay.js";
 
-const HEARTBEAT_MS = 5000;
+const HEARTBEAT_MS = 60 * 60 * 1000;
 
 const REVEAL_PHASES = new Set(["calling", "huntPick", "durchgangScore"]);
-const STALE_MS = 15000;
+const STALE_MS = HEARTBEAT_MS + 5 * 60 * 1000;
 
 const ROOM_STATE_KEYS = [
   "players",
