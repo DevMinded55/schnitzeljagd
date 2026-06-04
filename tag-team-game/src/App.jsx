@@ -10,75 +10,55 @@ import {
   deleteField,
 } from "firebase/firestore";
 import { db } from "./firebase";
+import {
+  animals,
+  CALL_ORDER,
+  getAnimal,
+  getValidPrey,
+  formatValidPrey,
+  isCardOnTable,
+  WIN_FOOD,
+} from "./game/animals.js";
+import {
+  processAnimalCall,
+  resolveHuntPick,
+  startCallingPhase,
+  startNextDurchgang,
+  initialRoomPlayer,
+  emptyTableState,
+} from "./game/roundEngine.js";
+import { buildRevealDisplay, badgeClassName } from "./game/revealDisplay.js";
 
 const HEARTBEAT_MS = 5000;
+
+const REVEAL_PHASES = new Set(["calling", "huntPick", "durchgangScore"]);
 const STALE_MS = 15000;
 
-const animals = [
-  {
-    id: "bear",
-    name: "Bär",
-    emoji: "🐻",
-    image: "/cards/baer.png",
-    power: 5,
-    hunts: ["wolf", "lynx"],
-    color: "from-amber-600 to-amber-800",
-    ring: "ring-amber-300",
-    description: "Stark und furchtlos auf der Jagd",
-  },
-  {
-    id: "wolf",
-    name: "Wolf",
-    emoji: "🐺",
-    image: "/cards/wolf.png",
-    power: 4,
-    hunts: ["lynx", "owl"],
-    color: "from-zinc-500 to-zinc-700",
-    ring: "ring-zinc-200",
-    description: "Schneller Rudeljäger",
-  },
-  {
-    id: "lynx",
-    name: "Luchs",
-    emoji: "🐆",
-    image: "/cards/luchs.png",
-    power: 3,
-    hunts: ["owl", "mouse"],
-    color: "from-orange-500 to-orange-700",
-    ring: "ring-orange-200",
-    description: "Leiser Waldbewohner",
-  },
-  {
-    id: "owl",
-    name: "Eule",
-    emoji: "🦉",
-    image: "/cards/eule.png",
-    power: 2,
-    hunts: ["mouse"],
-    color: "from-purple-600 to-purple-800",
-    ring: "ring-purple-200",
-    description: "Jäger der Nacht",
-  },
-  {
-    id: "mouse",
-    name: "Maus",
-    emoji: "🐭",
-    image: "/cards/maus.png",
-    power: 1,
-    hunts: [],
-    color: "from-emerald-500 to-emerald-700",
-    ring: "ring-emerald-200",
-    description: "Kleiner Überlebenskünstler",
-  },
+const ROOM_STATE_KEYS = [
+  "players",
+  "phase",
+  "huntIndex",
+  "durchgangIndex",
+  "callIndex",
+  "selections",
+  "tableOpen",
+  "durchgangPlays",
+  "currentHunterId",
+  "callingAnimalId",
+  "gameWinnerId",
+  "lastCall",
+  "lastAwards",
+  "message",
+  "started",
+  "hostId",
 ];
 
-function getAnimal(id) {
-  return animals.find((a) => a.id === id);
-}
-
-function formatHunts(animal) {
-  if (!animal.hunts.length) return "Niemanden";
-  return animal.hunts.map((h) => getAnimal(h)?.name ?? h).join(", ");
+function roomPatchFromEngine(result) {
+  const patch = {};
+  ROOM_STATE_KEYS.forEach((key) => {
+    if (result[key] !== undefined) patch[key] = result[key];
+  });
+  return patch;
 }
 
 function AnimalCardInfo({ animal, compact = false }) {
@@ -87,64 +67,17 @@ function AnimalCardInfo({ animal, compact = false }) {
       <div className="flex items-center justify-between gap-2">
         <span className="font-bold">{animal.name}</span>
         <span className="shrink-0 rounded-full bg-black/30 px-2 py-0.5 text-xs">
-          Stärke {animal.power}
+          Wert {animal.value}
         </span>
       </div>
       {!compact && (
         <p className="mt-1 text-xs opacity-90">{animal.description}</p>
       )}
       <p className={`text-xs opacity-90 ${compact ? "mt-0.5" : "mt-1"}`}>
-        <span className="font-semibold">Jagt:</span> {formatHunts(animal)}
+        <span className="font-semibold">Beute:</span> {formatValidPrey(animal.id)}
       </p>
     </div>
   );
-}
-
-function computeReveal(players, selections) {
-  const updatedPlayers = players.map((p) => ({ ...p }));
-  const eliminated = [];
-
-  updatedPlayers.forEach((hunter) => {
-    if (!hunter.alive) return;
-
-    const hunterAnimal = getAnimal(selections[hunter.id]);
-    if (!hunterAnimal) return;
-
-    updatedPlayers.forEach((target) => {
-      if (hunter.id === target.id || !target.alive) return;
-
-      const targetAnimal = getAnimal(selections[target.id]);
-      if (!targetAnimal) return;
-
-      if (hunterAnimal.hunts.includes(targetAnimal.id)) {
-        hunter.score += 1;
-        if (!eliminated.includes(target.id)) {
-          eliminated.push(target.id);
-        }
-      }
-    });
-  });
-
-  updatedPlayers.forEach((player) => {
-    if (eliminated.includes(player.id)) player.alive = false;
-  });
-
-  const survivors = updatedPlayers.filter((p) => p.alive);
-  let winnerId = null;
-  let message;
-
-  if (survivors.length <= 1) {
-    const w = survivors[0] || updatedPlayers[0];
-    winnerId = w ? w.id : null;
-    message = `${w?.name || "Niemand"} gewinnt die Jagd!`;
-  } else {
-    message =
-      eliminated.length > 0
-        ? `${eliminated.length} Spieler wurden in dieser Runde gejagt.`
-        : "In dieser Runde wurde niemand gejagt.";
-  }
-
-  return { updatedPlayers, eliminated, winnerId, message };
 }
 
 function AnimalArt({ animal, className, fit = "cover" }) {
@@ -172,6 +105,88 @@ function AnimalArt({ animal, className, fit = "cover" }) {
 
 const navBtnClass =
   "rounded-2xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-zinc-200 backdrop-blur transition hover:bg-white/15 hover:text-white";
+
+function RevealStage({ display }) {
+  if (!display) return null;
+
+  const { calledAnimal, headline, subtitle, cards } = display;
+  const cardFlipMs = 520;
+  const cardStaggerMs = 140;
+
+  return (
+    <section
+      aria-live="polite"
+      aria-label="Aufgedeckte Karten"
+      className="reveal-animate-stage mx-auto w-full max-w-2xl [animation:revealStageIn_0.45s_cubic-bezier(0.22,1,0.36,1)_both]"
+    >
+      <div className="flex flex-col items-center justify-center rounded-3xl border border-white/15 bg-zinc-900/80 px-4 py-6 shadow-2xl backdrop-blur [animation:revealGlowPulse_1.2s_ease-in-out_0.2s_both] sm:px-8 sm:py-8">
+        <h2 className="reveal-animate-headline text-center text-lg font-bold text-white [animation:revealHeadlineIn_0.4s_ease-out_0.08s_both] sm:text-xl">
+          {headline}
+        </h2>
+        {subtitle && (
+          <p className="reveal-animate-headline mt-2 max-w-md text-center text-sm text-zinc-300 [animation:revealHeadlineIn_0.4s_ease-out_0.16s_both]">
+            {subtitle}
+          </p>
+        )}
+
+        {cards.length > 0 ? (
+          <ul className="mt-6 flex w-full flex-wrap items-start justify-center gap-4 sm:gap-6">
+            {cards.map((entry, index) => {
+              const cardDelay = 0.12 + index * (cardStaggerMs / 1000);
+              const badgeDelay = cardDelay + cardFlipMs / 1000 + 0.05;
+              return (
+                <li
+                  key={`${entry.playerId}-${entry.animal.id}-${entry.badge}`}
+                  className="flex w-[min(100%,10.5rem)] flex-col items-center sm:w-44"
+                  style={{ perspective: "900px" }}
+                >
+                  <span
+                    className="reveal-animate-headline mb-2 max-w-full truncate text-center text-sm font-semibold text-zinc-100"
+                    style={{
+                      animation: `revealHeadlineIn 0.35s ease-out ${cardDelay - 0.06}s both`,
+                    }}
+                  >
+                    {entry.playerName}
+                  </span>
+                  <div
+                    className={`reveal-animate-card w-full overflow-hidden rounded-2xl bg-gradient-to-br ${entry.animal.color} p-2 shadow-lg ring-1 ring-white/10 [animation:revealCardFlip_${cardFlipMs}ms_cubic-bezier(0.34,1.2,0.64,1)_both] [transform-style:preserve-3d] [backface-visibility:hidden]`}
+                    style={{ animationDelay: `${cardDelay}s` }}
+                  >
+                    <AnimalArt
+                      animal={entry.animal}
+                      fit="contain"
+                      className="mx-auto aspect-[5/7] w-full max-w-[11rem] rounded-xl bg-black/25"
+                    />
+                  </div>
+                  {entry.badge && (
+                    <span
+                      className={`reveal-animate-badge mt-2 rounded-full px-3 py-1 text-xs font-bold ring-1 [animation:revealBadgePop_0.45s_cubic-bezier(0.34,1.4,0.64,1)_both] ${badgeClassName(entry.badge)}`}
+                      style={{ animationDelay: `${badgeDelay}s` }}
+                    >
+                      {entry.badge}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          calledAnimal && (
+            <div
+              className={`reveal-animate-empty mt-6 w-36 overflow-hidden rounded-2xl bg-gradient-to-br p-2 sm:w-40 ${calledAnimal.color} [animation:revealCardFlip_0.55s_cubic-bezier(0.34,1.2,0.64,1)_0.2s_both] [transform-style:preserve-3d]`}
+            >
+              <AnimalArt
+                animal={calledAnimal}
+                fit="contain"
+                className="aspect-[5/7] w-full rounded-xl bg-black/25"
+              />
+            </div>
+          )
+        )}
+      </div>
+    </section>
+  );
+}
 
 function MobileSideNav({ open, onClose, onShowRules, onLeave, showLeave }) {
   if (!open) return null;
@@ -227,8 +242,7 @@ function MobileSideNav({ open, onClose, onShowRules, onLeave, showLeave }) {
 }
 
 function RulesOverlay({ onClose }) {
-  const wolf = getAnimal("wolf");
-  const lynx = getAnimal("lynx");
+  const bear = getAnimal("bear");
 
   return (
     <div
@@ -254,81 +268,59 @@ function RulesOverlay({ onClose }) {
           <section>
             <h3 className="mb-1 font-bold text-white">Ziel</h3>
             <p>
-              Sei der letzte Überlebende und sammle Punkte, indem du andere
-              Spieler mit deinem Tier jagst.
+              Sammle als Erster <span className="font-semibold text-white">5
+              Futtermarker</span>. Du erhältst Futter am Ende jedes Durchgangs,
+              wenn du überlebst.
             </p>
           </section>
 
           <section>
-            <h3 className="mb-1 font-bold text-white">Ablauf pro Runde</h3>
+            <h3 className="mb-1 font-bold text-white">Durchgang & Jagd</h3>
             <ol className="list-inside list-decimal space-y-1">
-              <li>Jeder wählt heimlich ein Tier aus seinen Karten.</li>
+              <li>Ein Durchgang hat 1–3 Jagden.</li>
               <li>
-                Du kannst deine Wahl jederzeit ändern oder abwählen, solange der
-                Gastgeber die Jagd noch nicht aufgedeckt hat.
+                Pro Jagd: alle wählen gleichzeitig verdeckt eine Karte (offen
+                liegende Karten aus dem Durchgang sind gesperrt).
               </li>
               <li>
-                Der Gastgeber deckt auf, wenn alle lebenden Spieler bereit sind.
+                Tiere werden aufgerufen: Bär → Wolf → Luchs → Eule → Maus.
               </li>
               <li>
-                Jagt dein Tier ein anderes Tier, scheidet der gejagte Spieler
-                aus – du bekommst einen Punkt.
+                Gleiche Karte bei mehreren: keine Jagd, Karten bleiben offen.
               </li>
               <li>
-                In der nächsten Runde wählt ihr erneut. Bereits gespielte Karten
-                sind erst wieder verfügbar, wenn du alle fünf einmal gespielt
-                hast.
+                Einzelner Jäger benennt ein <span className="font-semibold text-white">schwächeres</span>{" "}
+                Tier (höherer Kartenwert).
               </li>
             </ol>
           </section>
 
           <section>
-            <h3 className="mb-2 font-bold text-white">Beispiel</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {[wolf, lynx].map((animal) => (
-                <div
-                  key={animal.id}
-                  className={`rounded-2xl bg-gradient-to-br ${animal.color} p-2`}
-                >
-                  <AnimalArt
-                    animal={animal}
-                    fit="contain"
-                    className="aspect-[5/7] w-full rounded-xl bg-black/20"
-                  />
-                  <div className="mt-2">
-                    <AnimalCardInfo animal={animal} compact />
-                  </div>
+            <h3 className="mb-2 font-bold text-white">Kartenwerte</h3>
+            {bear && (
+              <div
+                className={`rounded-2xl bg-gradient-to-br ${bear.color} p-2`}
+              >
+                <AnimalArt
+                  animal={bear}
+                  fit="contain"
+                  className="aspect-[5/7] w-full max-w-[140px] rounded-xl bg-black/20"
+                />
+                <div className="mt-2">
+                  <AnimalCardInfo animal={bear} compact />
                 </div>
-              ))}
-            </div>
-            <p className="mt-3 rounded-2xl bg-white/5 px-4 py-3 text-xs sm:text-sm">
-              Spieler A wählt den{" "}
-              <span className="font-semibold text-white">Wolf</span>, Spieler B
-              den <span className="font-semibold text-white">Luchs</span>. Der
-              Wolf jagt den Luchs → B scheidet aus, A bekommt 1 Punkt.
-            </p>
-          </section>
-
-          <section>
-            <h3 className="mb-1 font-bold text-white">Spiel & Session</h3>
-            <p>
-              Ein <span className="font-semibold text-white">Spiel</span> endet,
-              wenn nur noch ein Spieler lebt. Der Gastgeber kann danach{" "}
-              <span className="font-semibold text-white">Nächstes Spiel</span>{" "}
-              starten – alle leben wieder, die{" "}
-              <span className="font-semibold text-white">Siege</span> in der
-              Rangliste bleiben. So viele Spiele wie ihr wollt, bis{" "}
-              <span className="font-semibold text-white">Zurücksetzen</span> oder
-              alle den Raum verlassen.
+              </div>
+            )}
+            <p className="mt-3 text-xs">
+              Bär 1 … Maus 5. Der Bär kann alle höheren Werte als Beute wählen.
             </p>
           </section>
 
           <section>
             <h3 className="mb-1 font-bold text-white">Gastgeber</h3>
             <p>
-              Der Gastgeber startet das Spiel, deckt die Jagd auf, startet die
-              nächste Runde innerhalb eines Spiels und nach einem Gewinner das
-              nächste Spiel.
+              Startet das Spiel, führt den Tier-Aufruf durch und startet nach
+              der Futterverteilung den nächsten Durchgang.
             </p>
           </section>
         </div>
@@ -339,13 +331,19 @@ function RulesOverlay({ onClose }) {
 
 export default function SchnitzeljagdInspiredGame() {
   const [players, setPlayers] = React.useState([]);
-  const [round, setRound] = React.useState(1);
-  const [match, setMatch] = React.useState(0);
-  const [revealed, setRevealed] = React.useState(false);
+  const [phase, setPhase] = React.useState("select");
+  const [huntIndex, setHuntIndex] = React.useState(1);
+  const [durchgangIndex, setDurchgangIndex] = React.useState(0);
+  const [callIndex, setCallIndex] = React.useState(0);
   const [gameStarted, setGameStarted] = React.useState(false);
   const [selections, setSelections] = React.useState({});
-  const [playedCards, setPlayedCards] = React.useState({});
-  const [winnerId, setWinnerId] = React.useState(null);
+  const [tableOpen, setTableOpen] = React.useState({});
+  const [durchgangPlays, setDurchgangPlays] = React.useState({});
+  const [currentHunterId, setCurrentHunterId] = React.useState(null);
+  const [callingAnimalId, setCallingAnimalId] = React.useState(null);
+  const [gameWinnerId, setGameWinnerId] = React.useState(null);
+  const [lastCall, setLastCall] = React.useState(null);
+  const [lastAwards, setLastAwards] = React.useState(null);
   const [message, setMessage] = React.useState("");
   const [hostId, setHostId] = React.useState(null);
 
@@ -397,7 +395,8 @@ export default function SchnitzeljagdInspiredGame() {
       players: remaining,
       [`presence.${myId}`]: deleteField(),
       [`selections.${myId}`]: deleteField(),
-      [`playedCards.${myId}`]: deleteField(),
+      [`tableOpen.${myId}`]: deleteField(),
+      [`durchgangPlays.${myId}`]: deleteField(),
     };
     if (host === myId) updates.hostId = remaining[0].id;
     updateDoc(roomRef, updates).catch(() => {});
@@ -456,7 +455,8 @@ export default function SchnitzeljagdInspiredGame() {
         removed.forEach((p) => {
           updates[`presence.${p.id}`] = deleteField();
           updates[`selections.${p.id}`] = deleteField();
-          updates[`playedCards.${p.id}`] = deleteField();
+          updates[`tableOpen.${p.id}`] = deleteField();
+          updates[`durchgangPlays.${p.id}`] = deleteField();
         });
         if (removed.some((p) => p.id === d.hostId)) {
           updates.hostId = remaining[0].id;
@@ -476,13 +476,19 @@ export default function SchnitzeljagdInspiredGame() {
       if (!data) return;
 
       setPlayers(data.players || []);
-      setRound(data.round || 1);
-      setMatch(data.match || 0);
-      setRevealed(!!data.revealed);
+      setPhase(data.phase || "select");
+      setHuntIndex(data.huntIndex || 1);
+      setDurchgangIndex(data.durchgangIndex || 0);
+      setCallIndex(data.callIndex ?? 0);
       setGameStarted(!!data.started);
       setSelections(data.selections || {});
-      setPlayedCards(data.playedCards || {});
-      setWinnerId(data.winner || null);
+      setTableOpen(data.tableOpen || {});
+      setDurchgangPlays(data.durchgangPlays || {});
+      setCurrentHunterId(data.currentHunterId || null);
+      setCallingAnimalId(data.callingAnimalId || null);
+      setGameWinnerId(data.gameWinnerId || null);
+      setLastCall(data.lastCall || null);
+      setLastAwards(data.lastAwards || null);
       setMessage(data.message || "");
       setHostId(data.hostId || null);
       setIsHost(data.hostId === myId);
@@ -502,19 +508,25 @@ export default function SchnitzeljagdInspiredGame() {
       const newRoomId = Math.random().toString(36).substring(2, 7);
       const myId = crypto.randomUUID();
 
+      const { tableOpen, durchgangPlays } = emptyTableState([myId]);
+
       await setDoc(doc(db, "rooms", newRoomId), {
-        players: [
-          { id: myId, name: playerName.trim(), alive: true, score: 0, wins: 0 },
-        ],
+        players: [initialRoomPlayer(myId, playerName.trim())],
         selections: {},
-        playedCards: { [myId]: [] },
+        tableOpen,
+        durchgangPlays,
         presence: { [myId]: Date.now() },
-        revealed: false,
-        round: 1,
-        match: 0,
+        phase: "select",
+        huntIndex: 1,
+        durchgangIndex: 0,
+        callIndex: 0,
         started: false,
         hostId: myId,
-        winner: null,
+        gameWinnerId: null,
+        currentHunterId: null,
+        callingAnimalId: null,
+        lastCall: null,
+        lastAwards: null,
         message: "Warte auf Mitspieler ...",
       });
 
@@ -565,12 +577,13 @@ export default function SchnitzeljagdInspiredGame() {
 
       const updatedPlayers = [
         ...(data.players || []),
-        { id: myId, name: playerName.trim(), alive: true, score: 0, wins: 0 },
+        initialRoomPlayer(myId, playerName.trim()),
       ];
 
       await updateDoc(roomRef, {
         players: updatedPlayers,
-        [`playedCards.${myId}`]: [],
+        [`tableOpen.${myId}`]: [],
+        [`durchgangPlays.${myId}`]: [],
         [`presence.${myId}`]: Date.now(),
       });
 
@@ -604,13 +617,19 @@ export default function SchnitzeljagdInspiredGame() {
     setRoomId("");
     setPlayers([]);
     setSelections({});
-    setPlayedCards({});
-    setWinnerId(null);
+    setTableOpen({});
+    setDurchgangPlays({});
+    setGameWinnerId(null);
     setMessage("");
     setGameStarted(false);
-    setRevealed(false);
-    setRound(1);
-    setMatch(0);
+    setPhase("select");
+    setHuntIndex(1);
+    setDurchgangIndex(0);
+    setCallIndex(0);
+    setCurrentHunterId(null);
+    setCallingAnimalId(null);
+    setLastCall(null);
+    setLastAwards(null);
     setNotice("");
 
     if (!code || !myId) return;
@@ -632,7 +651,8 @@ export default function SchnitzeljagdInspiredGame() {
           players: remaining,
           [`presence.${myId}`]: deleteField(),
           [`selections.${myId}`]: deleteField(),
-          [`playedCards.${myId}`]: deleteField(),
+          [`tableOpen.${myId}`]: deleteField(),
+          [`durchgangPlays.${myId}`]: deleteField(),
         };
         if (d.hostId === myId) updates.hostId = remaining[0].id;
         tx.update(roomRef, updates);
@@ -642,6 +662,19 @@ export default function SchnitzeljagdInspiredGame() {
     }
   }
 
+  async function applyEngineUpdate(mutator) {
+    if (!roomId || !myPlayerId) return;
+    const roomRef = doc(db, "rooms", roomId);
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(roomRef);
+      const data = snap.data();
+      if (!data || data.hostId !== myPlayerId) return;
+      const next = mutator(data);
+      if (!next || next.error) return;
+      tx.update(roomRef, roomPatchFromEngine(next));
+    });
+  }
+
   async function startGame() {
     if (!roomId) return;
     if (players.length < 2) {
@@ -649,16 +682,31 @@ export default function SchnitzeljagdInspiredGame() {
       return;
     }
     setNotice("");
+    const ids = players.map((p) => p.id);
+    const { tableOpen, durchgangPlays } = emptyTableState(ids);
     await updateDoc(doc(db, "rooms", roomId), {
       started: true,
-      match: 1,
-      round: 1,
-      message: "Wählt euer Tier – geheim!",
+      phase: "select",
+      huntIndex: 1,
+      durchgangIndex: 1,
+      callIndex: 0,
+      players: players.map((p) => ({ ...p, alive: true, food: 0 })),
+      selections: {},
+      tableOpen,
+      durchgangPlays,
+      gameWinnerId: null,
+      currentHunterId: null,
+      callingAnimalId: null,
+      lastCall: null,
+      lastAwards: null,
+      message: "Durchgang 1 – wählt verdeckt eine Karte.",
     });
   }
 
   async function selectAnimal(animalId) {
-    if (revealed || !roomId || !myPlayerId) return;
+    if (phase !== "select" || !roomId || !myPlayerId) return;
+    const me = players.find((p) => p.id === myPlayerId);
+    if (!me?.alive) return;
 
     if (selections[myPlayerId] === animalId) {
       setNotice("");
@@ -668,9 +716,8 @@ export default function SchnitzeljagdInspiredGame() {
       return;
     }
 
-    const myPlayed = playedCards[myPlayerId] || [];
-    if (myPlayed.includes(animalId)) {
-      setNotice("Diese Karte hast du in diesem Spiel schon gespielt.");
+    if (isCardOnTable(tableOpen, myPlayerId, animalId)) {
+      setNotice("Diese Karte liegt bereits offen in diesem Durchgang.");
       return;
     }
     setNotice("");
@@ -685,77 +732,52 @@ export default function SchnitzeljagdInspiredGame() {
     return alive.length > 0 && alive.every((p) => selections[p.id]);
   }
 
-  async function revealRound() {
-    if (!roomId || !myPlayerId) return;
-
+  async function hostStartCalling() {
     if (!isHost) {
       setNotice("Nur der Gastgeber kann das.");
       return;
     }
-
     if (!everyoneSelected()) {
-      setNotice("Alle lebenden Spieler müssen erst ein Tier wählen.");
+      setNotice("Alle aktiven Spieler müssen erst eine Karte wählen.");
       return;
     }
     setNotice("");
+    await applyEngineUpdate((data) => startCallingPhase(data));
+  }
 
+  async function hostProcessCall() {
+    if (!isHost) {
+      setNotice("Nur der Gastgeber kann das.");
+      return;
+    }
+    if (phase !== "calling") return;
+    setNotice("");
+    await applyEngineUpdate((data) => processAnimalCall(data));
+  }
+
+  async function pickPrey(preyAnimalId) {
+    if (phase !== "huntPick" || !roomId || myPlayerId !== currentHunterId) return;
+    setNotice("");
     const roomRef = doc(db, "rooms", roomId);
     await runTransaction(db, async (tx) => {
       const snap = await tx.get(roomRef);
       const data = snap.data();
-      if (!data || data.revealed || data.hostId !== myPlayerId) return;
-
-      const sel = data.selections || {};
-      const aliveNotSelected = (data.players || []).filter(
-        (p) => p.alive && !sel[p.id],
-      );
-      if (aliveNotSelected.length > 0) return;
-
-      const result = computeReveal(data.players, sel);
-
-      let playersToWrite = result.updatedPlayers;
-      if (result.winnerId) {
-        playersToWrite = result.updatedPlayers.map((p) =>
-          p.id === result.winnerId
-            ? { ...p, wins: (p.wins || 0) + 1 }
-            : p,
-        );
-      }
-
-      const played = { ...(data.playedCards || {}) };
-      (data.players || []).forEach((p) => {
-        const choice = sel[p.id];
-        if (!choice) return;
-        const current = played[p.id] || [];
-        const updated = current.includes(choice)
-          ? current
-          : [...current, choice];
-        played[p.id] = updated.length >= animals.length ? [] : updated;
-      });
-
-      tx.update(roomRef, {
-        players: playersToWrite,
-        revealed: true,
-        winner: result.winnerId,
-        message: result.message,
-        playedCards: played,
-      });
+      if (!data || data.phase !== "huntPick") return;
+      if (data.currentHunterId !== myPlayerId) return;
+      const next = resolveHuntPick(data, preyAnimalId);
+      if (next.error) return;
+      tx.update(roomRef, roomPatchFromEngine(next));
     });
   }
 
-  async function nextRound() {
-    if (!roomId) return;
+  async function hostNextDurchgang() {
     if (!isHost) {
       setNotice("Nur der Gastgeber kann das.");
       return;
     }
+    if (phase !== "durchgangScore") return;
     setNotice("");
-    await updateDoc(doc(db, "rooms", roomId), {
-      selections: {},
-      revealed: false,
-      round: (round || 1) + 1,
-      message: "Wählt euer nächstes Tier.",
-    });
+    await applyEngineUpdate((data) => startNextDurchgang(data));
   }
 
   async function resetGame() {
@@ -765,46 +787,29 @@ export default function SchnitzeljagdInspiredGame() {
       return;
     }
     setNotice("");
-    const resetPlayers = players.map((p) => ({
-      ...p,
-      alive: true,
-      score: 0,
-      wins: 0,
-    }));
+    const ids = players.map((p) => p.id);
+    const { tableOpen, durchgangPlays } = emptyTableState(ids);
     await updateDoc(doc(db, "rooms", roomId), {
-      players: resetPlayers,
+      players: players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        alive: true,
+        food: 0,
+      })),
       selections: {},
-      playedCards: {},
-      revealed: false,
-      round: 1,
-      match: 0,
+      tableOpen,
+      durchgangPlays,
+      phase: "select",
+      huntIndex: 1,
+      durchgangIndex: 0,
+      callIndex: 0,
       started: false,
-      winner: null,
-      message: "Neue Runde – wartet in der Lobby.",
-    });
-  }
-
-  async function startNextGame() {
-    if (!roomId) return;
-    if (!isHost) {
-      setNotice("Nur der Gastgeber kann das.");
-      return;
-    }
-    setNotice("");
-    const nextPlayers = players.map((p) => ({
-      ...p,
-      alive: true,
-      score: 0,
-    }));
-    await updateDoc(doc(db, "rooms", roomId), {
-      players: nextPlayers,
-      selections: {},
-      playedCards: {},
-      revealed: false,
-      winner: null,
-      round: 1,
-      match: (match || 1) + 1,
-      message: "Neues Spiel – wählt euer Tier.",
+      gameWinnerId: null,
+      currentHunterId: null,
+      callingAnimalId: null,
+      lastCall: null,
+      lastAwards: null,
+      message: "Neue Session – wartet in der Lobby.",
     });
   }
 
@@ -817,11 +822,36 @@ export default function SchnitzeljagdInspiredGame() {
 
   const myPlayer = players.find((p) => p.id === myPlayerId);
   const mySelection = selections[myPlayerId];
-  const winner = winnerId ? players.find((p) => p.id === winnerId) : null;
-  const winsRanking = [...players].sort(
+  const gameWinner = gameWinnerId
+    ? players.find((p) => p.id === gameWinnerId)
+    : null;
+  const foodRanking = [...players].sort(
     (a, b) =>
-      (b.wins || 0) - (a.wins || 0) || a.name.localeCompare(b.name, "de"),
+      (b.food || 0) - (a.food || 0) || a.name.localeCompare(b.name, "de"),
   );
+  const callingAnimal = CALL_ORDER[callIndex]
+    ? getAnimal(CALL_ORDER[callIndex])
+    : null;
+  const hunterAnimal = callingAnimalId ? getAnimal(callingAnimalId) : null;
+  const validPrey = callingAnimalId ? getValidPrey(callingAnimalId) : [];
+  const canPickCards = phase === "select" && myPlayer?.alive && !gameWinnerId;
+  const isHunter =
+    phase === "huntPick" && myPlayerId === currentHunterId;
+
+  const revealDisplay = React.useMemo(() => {
+    if (!lastCall || phase === "select" || !REVEAL_PHASES.has(phase)) {
+      return null;
+    }
+    return buildRevealDisplay(lastCall, players, selections);
+  }, [lastCall, players, selections, phase]);
+
+  const revealAnimationKey = React.useMemo(() => {
+    if (!lastCall) return "";
+    const ids = (lastCall.playerIds || lastCall.eatenIds || []).join(",");
+    return `${lastCall.type}-${lastCall.animalId}-${lastCall.hunterId ?? ""}-${lastCall.preyId ?? ""}-${ids}`;
+  }, [lastCall]);
+
+  const hideListMiniCards = (revealDisplay?.cards?.length ?? 0) > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white">
@@ -1046,82 +1076,101 @@ export default function SchnitzeljagdInspiredGame() {
 
         {connected && gameStarted && (
           <div className="space-y-3">
-            {isHost && (revealed || winner) && (
-              <div className="flex flex-wrap justify-end gap-2">
-                {revealed && !winner && (
-                  <button
-                    onClick={nextRound}
-                    className="rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-sm font-bold shadow-lg shadow-blue-900/40 transition hover:scale-[1.03] active:scale-95"
-                  >
-                    Nächste Runde
-                  </button>
-                )}
-
-                {winner && (
-                  <button
-                    onClick={startNextGame}
-                    className="rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-sm font-bold shadow-lg shadow-blue-900/40 transition hover:scale-[1.03] active:scale-95"
-                  >
-                    Nächstes Spiel
-                  </button>
-                )}
-              </div>
-            )}
-
-            {revealed && message && !winner && (
-              <div className="rounded-2xl bg-zinc-900/60 px-5 py-4 text-center text-lg font-medium">
+            {message && !revealDisplay && (
+              <div className="rounded-2xl bg-zinc-900/60 px-5 py-4 text-center text-sm font-medium sm:text-lg">
                 {message}
               </div>
             )}
 
-            {winner && (
+            {revealDisplay && (
+              <RevealStage
+                key={revealAnimationKey}
+                display={revealDisplay}
+              />
+            )}
+
+            {isHost && phase === "select" && everyoneSelected() && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={hostStartCalling}
+                  className="rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-5 py-3 text-sm font-bold shadow-lg shadow-rose-900/40 transition hover:scale-[1.03] active:scale-95"
+                >
+                  Aufruf starten (Jagd {huntIndex})
+                </button>
+              </div>
+            )}
+
+            {isHost && phase === "calling" && callingAnimal && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={hostProcessCall}
+                  className="rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 px-5 py-3 text-sm font-bold shadow-lg shadow-orange-900/40 transition hover:scale-[1.03] active:scale-95"
+                >
+                  Aufdecken: {callingAnimal.name}
+                </button>
+              </div>
+            )}
+
+            {isHost && phase === "durchgangScore" && !gameWinnerId && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={hostNextDurchgang}
+                  className="rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-5 py-3 text-sm font-bold shadow-lg shadow-blue-900/40 transition hover:scale-[1.03] active:scale-95"
+                >
+                  Nächster Durchgang
+                </button>
+              </div>
+            )}
+
+            {phase === "durchgangScore" && lastAwards?.length > 0 && (
+              <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm">
+                <div className="mb-1 font-bold text-amber-100">Futter diese Runde</div>
+                <ul className="space-y-0.5 text-zinc-300">
+                  {lastAwards.map((a) => {
+                    const p = players.find((x) => x.id === a.playerId);
+                    return (
+                      <li key={a.playerId}>
+                        {p?.name}: {a.amount > 0 ? `+${a.amount}` : "0"} ({a.reason})
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {gameWinner && (
               <div className="rounded-3xl border border-emerald-400/40 bg-emerald-500/15 p-8 text-center shadow-2xl">
-                {match > 0 && (
-                  <div className="text-sm font-semibold uppercase tracking-widest text-emerald-200/80">
-                    Spiel {match}
-                  </div>
-                )}
-                <div className="mt-2 text-3xl font-black">
-                  {winner.name} gewinnt dieses Spiel!
+                <div className="text-3xl font-black">
+                  {gameWinner.name} gewinnt!
                 </div>
                 <div className="mt-1 text-zinc-300">
-                  Jagd-Punkte in diesem Spiel: {winner.score} · Siege gesamt:{" "}
-                  {winner.wins || 0}
+                  {gameWinner.food} Futtermarker (Ziel: {WIN_FOOD})
                 </div>
                 <div className="mx-auto mt-6 max-w-md rounded-2xl bg-black/20 px-4 py-3 text-left">
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                    Siege in dieser Session
+                    Futtermarker
                   </div>
                   <ul className="space-y-1">
-                    {winsRanking.map((p) => (
+                    {foodRanking.map((p) => (
                       <li
                         key={p.id}
                         className="flex items-center justify-between text-sm"
                       >
                         <span className="font-medium">{p.name}</span>
                         <span className="font-bold text-emerald-200">
-                          {p.wins || 0}
+                          {p.food || 0}
                         </span>
                       </li>
                     ))}
                   </ul>
                 </div>
-                {isHost ? (
-                  <button
-                    onClick={startNextGame}
-                    className="mt-6 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-8 py-3 text-lg font-bold shadow-lg shadow-blue-900/40 transition hover:scale-[1.03] active:scale-95"
-                  >
-                    Nächstes Spiel
-                  </button>
-                ) : (
-                  <p className="mt-6 text-sm text-zinc-300">
-                    Warte auf den Gastgeber für das nächste Spiel …
-                  </p>
-                )}
               </div>
             )}
 
-            {myPlayer && myPlayer.alive && !revealed && !winner && (
+            {canPickCards && (
               <div className="rounded-3xl border border-white/10 bg-white/5 p-3 shadow-2xl backdrop-blur sm:p-4">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-3">
@@ -1132,51 +1181,34 @@ export default function SchnitzeljagdInspiredGame() {
                       </p>
                     </div>
                     <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-300">
-                      {match > 0 ? `Spiel ${match} · ` : ""}Runde {round}
+                      Durchgang {durchgangIndex} · Jagd {huntIndex}
                     </span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {isHost ? (
-                      <button
-                        onClick={revealRound}
-                        className="rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-5 py-3 font-bold shadow-lg shadow-rose-900/40 transition hover:scale-[1.03] active:scale-95"
-                      >
-                        Jagd aufdecken
-                      </button>
-                    ) : (
-                      <span className="text-sm text-zinc-400">
-                        Warte, bis der Gastgeber die Jagd aufdeckt …
-                      </span>
-                    )}
-                    <span className="rounded-full bg-zinc-900/70 px-3 py-1 text-xs font-semibold text-zinc-300">
-                      Noch {animals.length - (playedCards[myPlayerId] || []).length}{" "}
-                      Karten
+                  {!isHost && (
+                    <span className="text-sm text-zinc-400">
+                      Warte auf den Aufruf durch den Gastgeber …
                     </span>
-                  </div>
+                  )}
                 </div>
                 <div className="mx-auto grid w-full max-w-[1180px] grid-cols-2 gap-3 md:grid-cols-5 xl:gap-4">
                   {animals.map((animal) => {
                     const selected = mySelection === animal.id;
-                    const isPlayed = (playedCards[myPlayerId] || []).includes(
+                    const onTable = isCardOnTable(
+                      tableOpen,
+                      myPlayerId,
                       animal.id,
                     );
                     return (
                       <button
                         key={animal.id}
+                        type="button"
                         onClick={() => selectAnimal(animal.id)}
-                        disabled={isPlayed}
-                        aria-disabled={isPlayed}
+                        disabled={onTable}
                         className={`group flex w-full flex-col rounded-2xl bg-gradient-to-br ${animal.color} p-2 text-left shadow-lg transition ${
-                          isPlayed
+                          onTable
                             ? "cursor-not-allowed opacity-40 grayscale"
                             : "hover:opacity-100 active:scale-[0.98]"
-                        } ${
-                          selected
-                            ? `ring-4 ${animal.ring}`
-                            : isPlayed
-                              ? ""
-                              : "opacity-90"
-                        }`}
+                        } ${selected ? `ring-4 ${animal.ring}` : onTable ? "" : "opacity-90"}`}
                       >
                         <AnimalArt
                           animal={animal}
@@ -1187,9 +1219,9 @@ export default function SchnitzeljagdInspiredGame() {
                           <AnimalCardInfo animal={animal} compact />
                         </div>
                         <div className="mt-1.5 flex h-6 items-center">
-                          {isPlayed ? (
+                          {onTable ? (
                             <div className="w-full rounded-full bg-black/40 px-2 py-1 text-center text-xs font-bold">
-                              Bereits gespielt
+                              Offen auf dem Tisch
                             </div>
                           ) : (
                             <div
@@ -1208,11 +1240,44 @@ export default function SchnitzeljagdInspiredGame() {
               </div>
             )}
 
-            {myPlayer && !myPlayer.alive && (
-              <div className="rounded-2xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-center text-sm font-semibold text-red-200">
-                Du wurdest gejagt – du schaust beim Rest der Jagd zu.
+            {isHunter && hunterAnimal && (
+              <div className="rounded-3xl border border-amber-400/40 bg-amber-500/10 p-4 shadow-2xl">
+                <h2 className="text-xl font-bold">
+                  Du jagst als {hunterAnimal.name}
+                </h2>
+                <p className="mt-1 text-sm text-zinc-300">
+                  Wähle deine Beute (schwächeres Tier):
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {validPrey.map((prey) => (
+                    <button
+                      key={prey.id}
+                      type="button"
+                      onClick={() => pickPrey(prey.id)}
+                      className={`rounded-xl bg-gradient-to-br ${prey.color} px-3 py-3 text-sm font-bold shadow-md transition hover:scale-[1.02] active:scale-95`}
+                    >
+                      {prey.emoji} {prey.name}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
+
+            {phase === "huntPick" && !isHunter && currentHunterId && (
+              <div className="rounded-2xl bg-zinc-900/60 px-4 py-3 text-center text-sm text-zinc-300">
+                {players.find((p) => p.id === currentHunterId)?.name} wählt die
+                Beute …
+              </div>
+            )}
+
+            {(phase === "calling" || phase === "select") &&
+              myPlayer &&
+              !myPlayer.alive && (
+                <div className="rounded-2xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-center text-sm font-semibold text-red-200">
+                  Du wurdest gefressen – du spielst diesen Durchgang nicht mehr
+                  mit.
+                </div>
+              )}
 
             <div>
               <h2 className="mb-1 text-base font-bold">Spieler</h2>
@@ -1221,9 +1286,17 @@ export default function SchnitzeljagdInspiredGame() {
                   const choice = getAnimal(selections[player.id]);
                   const hasChosen = !!selections[player.id];
                   const isMe = player.id === myPlayerId;
-                  const played = (playedCards[player.id] || [])
+                  const openCards = (tableOpen[player.id] || [])
                     .map(getAnimal)
                     .filter(Boolean);
+                  const showChoice =
+                    !hideListMiniCards &&
+                    phase !== "select" &&
+                    choice &&
+                    (lastCall?.type === "duplicate"
+                      ? lastCall.playerIds?.includes(player.id)
+                      : lastCall?.hunterId === player.id ||
+                        lastCall?.eatenIds?.includes(player.id));
 
                   return (
                     <div
@@ -1258,10 +1331,10 @@ export default function SchnitzeljagdInspiredGame() {
 
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-tight text-zinc-400">
                         <span>
-                          <span className="text-white">{player.score}</span>P ·{" "}
-                          <span className="text-white">{player.wins || 0}</span>S
+                          🌾{" "}
+                          <span className="text-white">{player.food || 0}</span>
                         </span>
-                        {revealed && choice ? (
+                        {showChoice && choice ? (
                           <span
                             className={`inline-flex items-center gap-1 rounded-md bg-gradient-to-br ${choice.color} px-1.5 py-0.5 text-[10px] font-bold text-white`}
                           >
@@ -1274,27 +1347,29 @@ export default function SchnitzeljagdInspiredGame() {
                           <span
                             className={
                               player.alive
-                                ? hasChosen
+                                ? hasChosen && phase === "select"
                                   ? "text-emerald-300"
                                   : "text-zinc-400"
                                 : "text-red-300"
                             }
                           >
                             {player.alive
-                              ? hasChosen
+                              ? hasChosen && phase === "select"
                                 ? "✓ Bereit"
-                                : "Wählt…"
-                              : "Ausgeschieden"}
+                                : phase === "select"
+                                  ? "Wählt…"
+                                  : "Aktiv"
+                              : "Gefressen"}
                           </span>
                         )}
                       </div>
 
-                      {played.length > 0 && (
+                      {openCards.length > 0 && (
                         <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                          {played.map((animal) => (
+                          {openCards.map((animal) => (
                             <span
                               key={animal.id}
-                              title={`Gespielt: ${animal.name}`}
+                              title={`Offen: ${animal.name}`}
                               className="inline-flex items-center gap-0.5 rounded-full bg-zinc-800/90 px-1.5 py-0.5 text-[10px] font-medium text-zinc-200"
                             >
                               {animal.emoji && (

@@ -1,0 +1,12 @@
+Meine Notizen von meinen Kumpel:
+
+3 Karten maximal pro Spiel spielbar
+Jeder spielt nacheinander eine Karte (der mit höchsten Stärke fängt an zu jagen)
+Man muss angeben, welches Tier man mit seiner Karte jagen möchte
+Falls mehrere dieselbe Karte legen, dürfen die mit den identischen Karten NICHT jagen diese Runde
+Die Punkte addieren sich aus den gelegten Karten(Die Werte stehen auf den Karten drauf: Bär 1, Wolf 2, Luchs 3, Eule 4, Maus 5) (Maximal 3 Runden, also auch 3 Karten)
+Fürs Überleben bekommt man ein Siegpunkt
+Der mit den meisten Punkten in einem Spiel (3 Runden) bekommt ein Siegpunkt
+Es gewinnt derjenige, der irgendwann 5 Siegpunkte erreicht
+Die aktuellen Einstellungen, welches Tier eine bestimmte Karte jagen kann verfällt!
+Man kann mit jeder Karte jede andere Karte jagen, VORRAUSGESETZT die gejagte Karte hat weniger Stärke als die von dir gespielte Karte
