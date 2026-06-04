@@ -870,7 +870,9 @@ export default function SchnitzeljagdInspiredGame() {
   }, [isHost, roomId, phase, callingAnimalId, currentHunterId, players]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white">
+    <div
+      className={`${connected && gameStarted ? "h-svh overflow-hidden" : "min-h-screen"} bg-gradient-to-br from-indigo-950 via-zinc-950 to-emerald-950 text-white`}
+    >
       <div className="fixed inset-x-0 top-0 z-40 border-b border-white/5 bg-zinc-950/80 backdrop-blur md:hidden">
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 px-3 py-2.5">
           <div className="justify-self-start">
@@ -943,7 +945,7 @@ export default function SchnitzeljagdInspiredGame() {
       <div
         className={`mx-auto max-w-[1500px] px-4 sm:px-8 md:pt-0 ${
           connected && gameStarted
-            ? "pt-14 pb-3 sm:pb-4 md:py-3 md:sm:py-4"
+            ? "h-full overflow-hidden pt-14 pb-3 sm:pb-4 md:py-3 md:sm:py-4"
             : "pt-[4.5rem] pb-6 sm:pb-10 md:py-6 md:sm:py-10"
         }`}
       >
@@ -1318,7 +1320,7 @@ export default function SchnitzeljagdInspiredGame() {
                   return (
                     <div
                       key={player.id}
-                      className={`min-w-0 rounded-xl border p-2 shadow-md transition ${
+                      className={`flex min-h-24 min-w-0 flex-col justify-between rounded-xl border p-3 shadow-md transition ${
                         player.alive
                           ? "border-white/10 bg-white/5"
                           : "border-red-800/50 bg-red-950/30 opacity-70"
@@ -1326,17 +1328,17 @@ export default function SchnitzeljagdInspiredGame() {
                     >
                       <div className="flex items-center justify-between gap-1.5">
                         <div className="flex min-w-0 items-center gap-1">
-                          <span className="truncate text-sm font-bold">
+                          <span className="truncate text-base font-bold leading-tight">
                             {player.name}
                           </span>
                           {isMe && (
-                            <span className="shrink-0 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] text-emerald-300">
+                            <span className="shrink-0 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-xs leading-none text-emerald-300">
                               du
                             </span>
                           )}
                         </div>
                         <span
-                          className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                          className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs font-bold leading-none ${
                             player.alive
                               ? "bg-emerald-500/80"
                               : "bg-red-700/80"
@@ -1346,7 +1348,7 @@ export default function SchnitzeljagdInspiredGame() {
                         </span>
                       </div>
 
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-tight text-zinc-400">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-tight text-zinc-400">
                         <span>
                           🍖{" "}
                           <span className="text-white">{player.food || 0}</span>
@@ -1357,7 +1359,7 @@ export default function SchnitzeljagdInspiredGame() {
                         </span>
                         {showChoice && choice ? (
                           <span
-                            className={`inline-flex items-center gap-1 rounded-md bg-gradient-to-br ${choice.color} px-1.5 py-0.5 text-[10px] font-bold text-white`}
+                            className={`inline-flex items-center gap-1 rounded-md bg-gradient-to-br ${choice.color} px-1.5 py-0.5 text-xs font-bold text-white`}
                           >
                             {choice.emoji && (
                               <span aria-hidden="true">{choice.emoji}</span>
@@ -1391,10 +1393,10 @@ export default function SchnitzeljagdInspiredGame() {
                             <span
                               key={animal.id}
                               title={`Offen: ${animal.name}`}
-                              className="inline-flex items-center gap-0.5 rounded-full bg-zinc-800/90 px-1.5 py-0.5 text-[10px] font-medium text-zinc-200"
+                              className="inline-flex items-center gap-0.5 rounded-full bg-zinc-800/90 px-1.5 py-0.5 text-xs font-medium text-zinc-200"
                             >
                               {animal.emoji && (
-                                <span aria-hidden="true" className="text-xs leading-none">
+                                <span aria-hidden="true" className="text-[15px] leading-none">
                                   {animal.emoji}
                                 </span>
                               )}
