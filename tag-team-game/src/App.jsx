@@ -1126,6 +1126,18 @@ export default function SchnitzeljagdInspiredGame() {
               </div>
             )}
 
+            {canHostStartCalling && !canPickCards && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={hostStartCalling}
+                  className="rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-5 py-3 text-sm font-bold shadow-lg shadow-rose-900/40 transition hover:scale-[1.03] active:scale-95"
+                >
+                  Aufruf starten (Jagd {huntIndex})
+                </button>
+              </div>
+            )}
+
             {isHost && phase === "calling" && callingAnimal && (
               <div className="flex justify-end">
                 <button
