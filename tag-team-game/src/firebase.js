@@ -1,5 +1,11 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore } from "firebase/firestore";
+
+/** iOS WebKit: Fetch Streams can delay onSnapshot delivery (firebase-js-sdk #9789). */
+function isIPhone() {
+  if (typeof navigator === "undefined") return false;
+  return /iPhone/i.test(navigator.userAgent);
+}
 
 const firebaseConfig = {
   apiKey: "AIzaSyAQY-d3E6eGCRXqIB7Gr0j91mEZ3K6gvKc",
@@ -12,4 +18,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const db = getFirestore(app);
+export const db = isIPhone()
+  ? initializeFirestore(app, { useFetchStreams: false })
+  : getFirestore(app);
